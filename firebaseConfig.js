@@ -5,12 +5,13 @@ import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
 import { getReactNativePersistence, initializeAuth } from 'firebase/auth';
 
 const firebaseConfig = {
-  apiKey: "AIzaSy...", // あなたのAPIキー
+  apiKey: "AIzaSyAIixoZPImlu3MtL7zHm_9rkssceHYzqUw",
   authDomain: "class-share-app.firebaseapp.com",
   projectId: "class-share-app",
-  storageBucket: "...",
-  messagingSenderId: "...",
-  appId: "..."
+  storageBucket: "class-share-app.firebasestorage.app",
+  messagingSenderId: "1363142310",
+  appId: "1:1363142310:web:466c3c0434cb10907ef667",
+  measurementId: "G-LQGMYZY21D"
 };
 
 const app = initializeApp(firebaseConfig);
@@ -22,3 +23,4 @@ const auth = initializeAuth(app, {
 });
 
 export { auth, db };
+
