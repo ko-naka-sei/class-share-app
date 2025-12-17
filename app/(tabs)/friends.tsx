@@ -1,7 +1,7 @@
 import * as ExpoClipboard from 'expo-clipboard'; // もしClipboardがなければこちら
 import React, { useEffect, useState } from 'react';
 import { Alert, Button, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'; // Clipboardは非推奨の場合がありますが一旦これで、もしくはexpo-clipboard
-import { auth } from '../../firebaseConfig';
+import { auth } from '../../firebaseConfig.native';
 import { followUserByUsername, getUserProfile } from '../../services/userService';
 
 export default function FriendsScreen() {

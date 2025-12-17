@@ -1,6 +1,6 @@
 import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, serverTimestamp } from 'firebase/firestore';
 // ↓ 1つ上の階層(ルート)にある firebaseConfig を読み込む
-import { db } from '../firebaseConfig';
+import { db } from '../firebaseConfig.native';
 // ↓ 1つ上の階層(ルート)にある types フォルダを見る
 import { ClassItem } from '../types';
 
