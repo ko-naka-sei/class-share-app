@@ -1,5 +1,5 @@
 import { arrayUnion, collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from 'firebase/firestore';
-import { db } from '../firebaseConfig.native'; // ルートのfirebaseConfigを読み込み
+import { db } from '../firebaseConfig'; // ルートのfirebaseConfigを読み込み
 
 // ユーザー情報を保存（新規登録時に呼ぶやつ）
 export const saveUserProfile = async (uid: string, username: string) => {

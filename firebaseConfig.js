@@ -1,10 +1,11 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
-// Web用の普通の認証機能をインポート
-import { getAuth } from 'firebase/auth';
+// スマホ専用の機能をインポート
+import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
+import { getReactNativePersistence, initializeAuth } from 'firebase/auth';
 
 const firebaseConfig = {
-  apiKey: "AIzaSy...", // ★ここも同じAPIキーを貼ってください
+  apiKey: "AIzaSy...", // あなたのAPIキー
   authDomain: "class-share-app.firebaseapp.com",
   projectId: "class-share-app",
   storageBucket: "...",
@@ -15,8 +16,9 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-// Web用の認証設定（ブラウザが勝手に管理してくれるのでシンプル）
-const auth = getAuth(app);
+// スマホ用の認証設定
+const auth = initializeAuth(app, {
+  persistence: getReactNativePersistence(ReactNativeAsyncStorage)
+});
 
 export { auth, db };
-

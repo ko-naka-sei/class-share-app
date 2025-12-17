@@ -3,7 +3,7 @@ import { useRouter } from 'expo-router';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import React, { useEffect, useState } from 'react';
 import { ActionSheetIOS, Button, FlatList, Platform, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { auth } from '../../firebaseConfig.native';
+import { auth } from '../../firebaseConfig';
 
 // ★パス修正
 import ClassCard from '../../components/ClassCard';
