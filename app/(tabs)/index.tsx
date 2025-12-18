@@ -1,154 +1,174 @@
-import { Picker } from '@react-native-picker/picker';
-import { useRouter } from 'expo-router';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
-import React, { useEffect, useState } from 'react';
-import { ActionSheetIOS, Button, FlatList, Platform, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { auth } from '../../firebaseConfig';
-
-// ★パス修正
-import ClassCard from '../../components/ClassCard';
-import { addClassItem, deleteClassItem, subscribeToTimetable } from '../../services/timetable';
-import { getUserProfile } from '../../services/userService'; // 追加
-import { ClassItem } from '../../types';
-
-const DAYS = ['月曜日', '火曜日', '水曜日', '木曜日', '金曜日'];
-const PERIODS = ['1限', '2限', '3限', '4限', '5限', '6限'];
+import { useFocusEffect } from 'expo-router';
+import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
+import React, { useCallback, useState } from 'react';
+import { FlatList, Image, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { auth, db } from '../../firebaseConfig';
 
 export default function HomeScreen() {
-  const [classData, setClassData] = useState<ClassItem[]>([]);
-  const [user, setUser] = useState<any>(null);
-  const [myFollowing, setMyFollowing] = useState<string[]>([]); // ★フォローリスト
-  const router = useRouter();
+  const [viewMode, setViewMode] = useState<'photos' | 'timetables'>('photos');
+  const [posts, setPosts] = useState<any[]>([]);
+  const [timetables, setTimetables] = useState<any[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const [inputDay, setInputDay] = useState('月曜日');
-  const [inputPeriod, setInputPeriod] = useState('1限');
-  const [inputStatus, setInputStatus] = useState('');
-
-  // 1. ログイン＆フォローリスト取得
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (u) => {
-      setUser(u);
-      if (u) {
-        const profile: any = await getUserProfile(u.uid);
-        if (profile && profile.following) {
-          setMyFollowing(profile.following);
-        } else {
-          setMyFollowing([u.uid]); // データなければ自分だけ
-        }
-      } else {
-        setMyFollowing([]);
-      }
-    });
-    return () => unsubscribe();
-  }, []);
-
-  // 2. データ取得＆フィルタリング
-  useEffect(() => {
-    const unsubscribe = subscribeToTimetable((data) => {
-      if (user && myFollowing.length > 0) {
-        // フォローリストに含まれるUIDの投稿だけ残す
-        const filtered = data.filter(item => myFollowing.includes(item.uid));
-        setClassData(filtered);
-      } else {
-        // 未ログイン時は全表示（または何も表示しない仕様でもOK）
-        setClassData(data);
-      }
-    });
-    return () => unsubscribe();
-  }, [user, myFollowing]); // ★ここが重要：フォローが増えたら再計算
-
-  const handlePost = async () => {
-    if (!user) { alert('ログインしてください'); router.push('/login'); return; }
-    if (inputStatus === '') { alert('状況を入力してください'); return; }
-
+  const fetchData = async () => {
+    setRefreshing(true);
     try {
-      const userName = user.displayName || user.email.split('@')[0];
-      await addClassItem(inputDay, inputPeriod, inputStatus, { uid: user.uid, name: userName });
-      setInputStatus('');
+      const user = auth.currentUser;
+      if (!user) {
+        setRefreshing(false);
+        return;
+      }
+      const myProfileSnap = await getDoc(doc(db, 'users', user.uid));
+      let following: string[] = [];
+      if (myProfileSnap.exists()) {
+        following = myProfileSnap.data().following || [];
+      }
+      if (!following.includes(user.uid)) following.push(user.uid);
+
+      const postsSnap = await getDocs(collection(db, 'posts'));
+      const loadedPosts: any[] = [];
+      postsSnap.forEach((doc) => {
+        const d = doc.data();
+        if (following.includes(d.uid)) loadedPosts.push({ id: doc.id, ...d });
+      });
+      loadedPosts.sort((a, b) => (b.updatedAt?.seconds || 0) - (a.updatedAt?.seconds || 0));
+      setPosts(loadedPosts);
+
+      const timetablesSnap = await getDocs(collection(db, 'timetables'));
+      const loadedTimetables: any[] = [];
+      timetablesSnap.forEach((doc) => {
+        const d = doc.data();
+        if (following.includes(d.uid)) loadedTimetables.push({ id: doc.id, ...d });
+      });
+      setTimetables(loadedTimetables);
+
     } catch (e) {
-      alert('送信エラー');
+      console.log(e);
+    } finally {
+      setRefreshing(false);
     }
   };
 
-  const openIosMenu = (title: string, options: string[], setFunction: (val: string) => void) => {
-    ActionSheetIOS.showActionSheetWithOptions(
-      { options: [...options, 'キャンセル'], cancelButtonIndex: options.length, title },
-      (idx) => { if (idx < options.length) setFunction(options[idx]); }
+  useFocusEffect(
+    useCallback(() => {
+      fetchData();
+    }, [])
+  );
+
+  // ★変更点: 入力された文字をそのままリスト表示する
+  const renderFreeTimeList = (data: any) => {
+    const days = [
+      { key: 'mon', label: '月' },
+      { key: 'tue', label: '火' },
+      { key: 'wed', label: '水' },
+      { key: 'thu', label: '木' },
+      { key: 'fri', label: '金' },
+      { key: 'sat', label: '土', weekend: true },
+      { key: 'sun', label: '日', weekend: true },
+    ];
+
+    // 何も入力していない場合は「予定なし」と表示
+    const hasAnyEntry = days.some(day => data[day.key]);
+    if (!hasAnyEntry) {
+      return <Text style={styles.noPlanText}>登録された予定はありません</Text>;
+    }
+
+    return (
+      <View style={styles.listContainer}>
+        {days.map((day) => {
+          const text = data[day.key];
+          if (!text) return null; // 入力がない曜日は表示しない
+
+          return (
+            <View key={day.key} style={styles.listRow}>
+              <View style={[styles.dayBadge, day.weekend && styles.weekendBadge]}>
+                <Text style={[styles.dayText, day.weekend && styles.weekendText]}>{day.label}</Text>
+              </View>
+              <Text style={styles.planText}>{text}</Text>
+            </View>
+          );
+        })}
+      </View>
     );
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
-        
-        <View style={styles.headerRow}>
-          <Text style={styles.title}>空きコマ共有</Text>
-          {user ? (
-            <TouchableOpacity onPress={() => signOut(auth)} style={styles.logoutBtn}>
-              <Text style={styles.logoutText}>ログアウト</Text>
-            </TouchableOpacity>
-          ) : (
-            <Button title="ログイン" onPress={() => router.push('/login')} />
-          )}
-        </View>
-
-        <View style={styles.formContainer}>
-          <View style={styles.pickerRow}>
-            {Platform.OS === 'ios' ? (
-              <>
-                <TouchableOpacity style={styles.iosPickerBtn} onPress={() => openIosMenu("曜日", DAYS, setInputDay)}>
-                  <Text>{inputDay} ▼</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.iosPickerBtn, { marginLeft: 10 }]} onPress={() => openIosMenu("時限", PERIODS, setInputPeriod)}>
-                  <Text>{inputPeriod} ▼</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <View style={styles.pickerWrapper}>
-                  <Picker selectedValue={inputDay} onValueChange={setInputDay} style={styles.picker}>
-                    {DAYS.map(d => <Picker.Item key={d} label={d} value={d} />)}
-                  </Picker>
-                </View>
-                <View style={styles.pickerWrapper}>
-                  <Picker selectedValue={inputPeriod} onValueChange={setInputPeriod} style={styles.picker}>
-                    {PERIODS.map(p => <Picker.Item key={p} label={p} value={p} />)}
-                  </Picker>
-                </View>
-              </>
-            )}
-          </View>
-          <TextInput 
-            style={styles.input} placeholder="状況 (例: 休講)" value={inputStatus} onChangeText={setInputStatus} 
-          />
-          <Button title="投稿する" onPress={handlePost} />
-        </View>
-
-        <FlatList
-          data={classData}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <ClassCard item={item} currentUserId={user?.uid} onDelete={deleteClassItem} />
-          )}
-          style={styles.list}
-        />
+    <View style={styles.container}>
+      <View style={styles.tabContainer}>
+        <TouchableOpacity 
+          style={[styles.tabButton, viewMode === 'photos' && styles.activeTab]} 
+          onPress={() => setViewMode('photos')}
+        >
+          <Text style={[styles.tabText, viewMode === 'photos' && styles.activeTabText]}>📸 写真</Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={[styles.tabButton, viewMode === 'timetables' && styles.activeTab]} 
+          onPress={() => setViewMode('timetables')}
+        >
+          <Text style={[styles.tabText, viewMode === 'timetables' && styles.activeTabText]}>📅 みんなの予定</Text>
+        </TouchableOpacity>
       </View>
-    </SafeAreaView>
+
+      {viewMode === 'photos' ? (
+        <FlatList
+          data={posts}
+          keyExtractor={(item) => item.id}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={fetchData} />}
+          ListEmptyComponent={<Text style={styles.emptyText}>まだ投稿がありません</Text>}
+          renderItem={({ item }) => (
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Text style={styles.username}>{item.username || '名無し'}</Text>
+                <Text style={styles.date}>BeReal.</Text>
+              </View>
+              {item.photoUrl && <Image source={{ uri: item.photoUrl }} style={styles.postImage} />}
+              <Text style={styles.message}>{item.message}</Text>
+            </View>
+          )}
+        />
+      ) : (
+        <FlatList
+          data={timetables}
+          keyExtractor={(item) => item.id}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={fetchData} />}
+          ListEmptyComponent={<Text style={styles.emptyText}>まだデータがありません</Text>}
+          renderItem={({ item }) => (
+            <View style={styles.card}>
+              <Text style={styles.timetableUser}>{item.username || 'ユーザー'} の暇な時間</Text>
+              {renderFreeTimeList(item)}
+            </View>
+          )}
+        />
+      )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8f9fa' },
-  content: { flex: 1, padding: 20 },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  title: { fontSize: 24, fontWeight: 'bold' },
-  logoutBtn: { padding: 5, backgroundColor: '#ddd', borderRadius: 5 },
-  logoutText: { fontSize: 12 },
-  formContainer: { backgroundColor: '#fff', padding: 15, borderRadius: 10, marginBottom: 20, elevation: 2 },
-  pickerRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
-  pickerWrapper: { flex: 1, borderWidth: 1, borderColor: '#ddd', borderRadius: 5, marginRight: 5, justifyContent: 'center', height: 50 },
-  picker: { width: '100%', height: 50 },
-  iosPickerBtn: { flex: 1, height: 50, borderWidth: 1, borderColor: '#ddd', borderRadius: 5, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f9f9f9' },
-  input: { borderWidth: 1, borderColor: '#ddd', padding: 10, borderRadius: 5, backgroundColor: '#f9f9f9', marginBottom: 10 },
-  list: { flex: 1 },
+  container: { flex: 1, backgroundColor: '#f0f2f5', paddingTop: 50 },
+  tabContainer: { flexDirection: 'row', justifyContent: 'center', marginBottom: 15 },
+  tabButton: { paddingVertical: 8, paddingHorizontal: 20, borderRadius: 20, marginHorizontal: 5, backgroundColor: '#ddd' },
+  activeTab: { backgroundColor: '#000' },
+  tabText: { fontWeight: 'bold', color: '#555' },
+  activeTabText: { color: '#fff' },
+  
+  card: { backgroundColor: '#fff', marginHorizontal: 15, marginBottom: 20, borderRadius: 15, padding: 15, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3 },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+  username: { fontWeight: 'bold', fontSize: 16 },
+  date: { color: '#888', fontSize: 12 },
+  postImage: { width: '100%', height: 400, borderRadius: 10, backgroundColor: '#eee' },
+  message: { marginTop: 10, fontSize: 14, color: '#333' },
+  emptyText: { textAlign: 'center', marginTop: 50, color: '#888' },
+
+  timetableUser: { fontSize: 18, fontWeight: 'bold', marginBottom: 15, color: '#000', textAlign: 'center' },
+  
+  // 新しいリスト表示のデザイン
+  listContainer: { paddingHorizontal: 10 },
+  listRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  dayBadge: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#eee', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  weekendBadge: { backgroundColor: '#ffecec' },
+  dayText: { fontWeight: 'bold', color: '#555' },
+  weekendText: { color: '#ff6b6b' },
+  planText: { flex: 1, fontSize: 16, color: '#333' },
+  noPlanText: { textAlign: 'center', color: '#aaa', fontStyle: 'italic' }
 });

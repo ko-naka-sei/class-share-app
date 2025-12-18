@@ -15,6 +15,21 @@ export default function TabLayout() {
         }}
       />
 
+
+      <Tabs.Screen
+        name="timetable-edit" // 作ったファイル名
+        options={{
+          title: '時間割編集',
+          tabBarIcon: ({ color }) => <Ionicons name="create" size={24} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="post"  // ← さっき作ったファイル名と一致させる
+        options={{
+          title: '投稿',
+          tabBarIcon: ({ color }) => <Ionicons name="camera" size={24} color={color} />,
+        }}
+      />
       {/* ★追加: 友達タブ */}
       <Tabs.Screen
         name="friends"
