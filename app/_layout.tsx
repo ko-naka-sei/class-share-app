@@ -1,41 +1,64 @@
 import { Stack } from 'expo-router';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, View, Platform } from 'react-native'; // Platformを追加
 import { auth } from '../firebaseConfig';
-import AuthScreen from './auth'; // さっき作ったファイルをインポート
+import AuthScreen from './auth';
 
 export default function RootLayout() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // ログイン状態を監視するリスナー
+    // ★追加: Webブラウザで開いた時のタブ名を「MyBeReal」にする
+    if (Platform.OS === 'web') {
+      document.title = "MyBeReal"; 
+    }
+
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
-      setLoading(false); // 確認が終わったらローディング解除
+      setLoading(false);
     });
     return () => unsubscribe();
   }, []);
 
-  // 1. 確認中はずっとくるくるを表示（真っ白な画面を防ぐ）
+  // 1. 確認中は「黒背景」でくるくるを表示 (BeRealっぽく)
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#000" />
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }}>
+        <ActivityIndicator size="large" color="#fff" />
       </View>
     );
   }
 
-  // 2. ログインしていない場合は、ログイン画面だけを表示（他へのアクセスを完全ブロック）
+  // 2. ログインしていない場合は認証画面へ
   if (!user) {
     return <AuthScreen />;
   }
 
-  // 3. ログインしている場合のみ、通常のアプリ画面（Tabsなど）を表示
+  // 3. ログイン後の画面設定
   return (
-    <Stack>
+    <Stack
+      screenOptions={{
+        // 全体のヘッダー設定（黒背景・白文字）
+        headerStyle: { backgroundColor: '#000' },
+        headerTintColor: '#fff',
+        headerTitleStyle: { fontWeight: 'bold' },
+        // Webで戻るボタンなどが変にならないように
+        headerBackTitleVisible: false, 
+      }}
+    >
+      {/* メインのタブ画面 (ヘッダーなし) */}
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+
+      {/* ★追加: 友達一覧・追加画面 (モーダル風に下から出す) */}
+      <Stack.Screen 
+        name="friends"  // friends.tsx というファイルを作った場合
+        options={{ 
+          title: '友達追加',
+          presentation: 'modal', // これでiOSアプリっぽく下から出てくる
+        }} 
+      />
     </Stack>
   );
 }

@@ -23,7 +23,17 @@
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/favicon.png",
+      "display": "standalone",
+      "backgroundColor": "#ffffff",
+      "themeColor": "#ffffff",
+      "meta": {
+        "apple": {
+          "mobileWebAppCapable": "yes",
+          "mobileWebAppStatusBarStyle": "black-translucent",
+          "appleTouchIcon": "./public/apple-touch-icon.png"
+        }
+      }
     },
     "plugins": [
       "expo-router",
