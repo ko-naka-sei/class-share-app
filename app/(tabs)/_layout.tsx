@@ -15,6 +15,15 @@ export default function TabLayout() {
         }}
       />
 
+      {/* // <Tabs> の中に以下を追加 */}
+
+      <Tabs.Screen
+        name="streetpass"
+        options={{
+          title: 'すれ違い',
+          tabBarIcon: ({ color }) => <Ionicons name="bluetooth" size={24} color={color} />,
+        }}
+      />
 
       <Tabs.Screen
         name="timetable-edit" // 作ったファイル名
@@ -38,6 +47,8 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => <Ionicons name="person-add" size={24} color={color} />,
         }}
       />
+
+      
       
     </Tabs>
   );
