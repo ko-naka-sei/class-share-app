@@ -36,7 +36,7 @@ export default function TabLayout() {
         <Tabs.Screen
           name="timetable-edit"
           options={{
-            title: '時間割編集',
+            title: '予定編集',
             tabBarIcon: ({ color }) => <Ionicons name="create" size={24} color={color} />,
           }}
         />

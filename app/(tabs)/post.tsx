@@ -68,7 +68,7 @@ export default function PostScreen() {
         username: myUsername || '名無し',
         photoUrl: image,
         updatedAt: serverTimestamp(),
-        message: "BeReal."
+        message: "Real."
       });
 
       Alert.alert('完了', '投稿しました！');
