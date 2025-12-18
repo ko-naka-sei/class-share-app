@@ -1,7 +1,8 @@
+import * as ImageManipulator from 'expo-image-manipulator'; // ★追加
 import * as ImagePicker from 'expo-image-picker';
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Button, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { auth, db } from '../../firebaseConfig';
 
 export default function PostScreen() {
@@ -21,7 +22,7 @@ export default function PostScreen() {
     fetchMe();
   }, []);
 
-  // ★変更: カメラ機能だけ残す
+  // ★ここが重要：撮影後に画像を小さく圧縮する
   const takePhoto = async () => {
     const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
     
@@ -31,25 +32,40 @@ export default function PostScreen() {
     }
 
     const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
+      allowsEditing: true, // トリミング画面を出す
       aspect: [3, 4],
-      quality: 0.3,
-      base64: true,
+      quality: 0.5, // ここの画質は適当でOK（後でリサイズするため）
     });
 
-    if (!result.canceled && result.assets[0].base64) {
-      setImage(`data:image/jpeg;base64,${result.assets[0].base64}`);
+    if (!result.canceled) {
+      // ★ ImageManipulatorでリサイズ処理
+      const manipResult = await ImageManipulator.manipulateAsync(
+        result.assets[0].uri,
+        [{ resize: { width: 600 } }], // ★幅を600pxに縮小（これで容量オーバーを防ぐ！）
+        { compress: 0.5, format: ImageManipulator.SaveFormat.JPEG, base64: true } // 文字データ(base64)に変換
+      );
+
+      if (manipResult.base64) {
+        setImage(`data:image/jpeg;base64,${manipResult.base64}`);
+      }
     }
   };
 
   const uploadPost = async () => {
-    if (!image || !auth.currentUser) return;
+    if (!auth.currentUser) return;
+    if (!image) return;
+
     setUploading(true);
 
     try {
+      // 容量チェック（念のため）
+      if (image.length > 1000000) {
+        throw new Error("画像の容量がまだ大きすぎます。もう一度撮り直してください。");
+      }
+
       await setDoc(doc(db, 'posts', auth.currentUser.uid), {
         uid: auth.currentUser.uid,
-        username: myUsername,
+        username: myUsername || '名無し',
         photoUrl: image,
         updatedAt: serverTimestamp(),
         message: "BeReal."
@@ -58,7 +74,8 @@ export default function PostScreen() {
       Alert.alert('完了', '投稿しました！');
       setImage(null);
     } catch (e: any) {
-      Alert.alert('エラー', e.message);
+      console.error(e);
+      Alert.alert('エラー', '投稿に失敗しました: ' + e.message);
     } finally {
       setUploading(false);
     }
@@ -76,7 +93,6 @@ export default function PostScreen() {
         </View>
       )}
 
-      {/* ボタンを1つにしました */}
       <View style={styles.buttonContainer}>
         {!image && (
           <TouchableOpacity style={styles.cameraButton} onPress={takePhoto}>
@@ -91,9 +107,12 @@ export default function PostScreen() {
              <ActivityIndicator size="large" color="#000" />
            ) : (
              <View style={styles.actionButtons}>
-               <Button title="やり直す" onPress={() => setImage(null)} color="#888" />
-               <View style={{height: 10}} />
-               <Button title="投稿する" onPress={uploadPost} color="#000" />
+               <TouchableOpacity onPress={() => setImage(null)} style={styles.retryButton}>
+                  <Text style={styles.retryText}>撮り直す</Text>
+               </TouchableOpacity>
+               <TouchableOpacity onPress={uploadPost} style={styles.postButton}>
+                  <Text style={styles.postText}>投稿する 🚀</Text>
+               </TouchableOpacity>
              </View>
            )}
         </View>
@@ -109,8 +128,13 @@ const styles = StyleSheet.create({
   placeholder: { width: 300, height: 400, backgroundColor: '#eee', justifyContent: 'center', alignItems: 'center', borderRadius: 10, marginBottom: 20 },
   placeholderText: { color: '#888', fontWeight: 'bold' },
   buttonContainer: { marginBottom: 20 },
-  uploadContainer: { width: 200 },
+  uploadContainer: { width: 250 },
   cameraButton: { backgroundColor: '#000', paddingVertical: 15, paddingHorizontal: 30, borderRadius: 30 },
   cameraButtonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
-  actionButtons: { marginTop: 10 }
+  
+  actionButtons: { flexDirection: 'row', justifyContent: 'space-between' },
+  retryButton: { padding: 15, backgroundColor: '#eee', borderRadius: 30, width: '45%', alignItems: 'center' },
+  retryText: { color: '#333', fontWeight: 'bold' },
+  postButton: { padding: 15, backgroundColor: '#000', borderRadius: 30, width: '45%', alignItems: 'center' },
+  postText: { color: '#fff', fontWeight: 'bold' }
 });
