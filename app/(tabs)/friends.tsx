@@ -63,12 +63,12 @@ export default function FriendsScreen() {
       </View>
 
       <Text style={styles.title}>友達を探す</Text>
-      <Text style={styles.desc}>友達のIDを入力して追加しましょう</Text>
+      <Text style={styles.desc}>友達の名前を入力して追加しましょう</Text>
       
       <View style={styles.inputContainer}>
         <TextInput
           style={styles.input}
-          placeholder="友達のID (例: hanako99)"
+          placeholder="友達の名前 (例: 田中太郎)"
           value={targetName}
           onChangeText={setTargetName}
           autoCapitalize="none"
