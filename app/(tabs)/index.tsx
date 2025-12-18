@@ -137,7 +137,7 @@ export default function HomeScreen() {
             <View style={styles.card}>
               <View style={styles.cardHeader}>
                 <Text style={styles.username}>{item.username || '名無し'}</Text>
-                <Text style={styles.date}>BeReal.</Text>
+                <Text style={styles.date}>Real.</Text>
               </View>
               {item.photoUrl && <Image source={{ uri: item.photoUrl }} style={styles.postImage} />}
               <Text style={styles.message}>{item.message}</Text>

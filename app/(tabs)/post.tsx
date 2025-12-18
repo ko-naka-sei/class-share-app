@@ -83,7 +83,7 @@ export default function PostScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>BeReal.</Text>
+      <Text style={styles.title}>Real.</Text>
       
       {image ? (
         <Image source={{ uri: image }} style={styles.preview} />
