@@ -161,7 +161,8 @@ export default function AuthScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
+  container: { flex: 1, backgroundColor: '#fff',paddingTop: 50, 
+    paddingBottom: 50 },
   inner: { flex: 1, justifyContent: 'center', padding: 20 },
   
   title: { fontSize: 28, fontWeight: 'bold', textAlign: 'center', marginBottom: 5 },
