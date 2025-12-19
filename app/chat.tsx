@@ -1,10 +1,34 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-// ★ getDoc を追加しました
 import { addDoc, collection, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp, setDoc } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Platform, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, FlatList, KeyboardAvoidingView, Platform, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { auth, db } from '../firebaseConfig';
+
+// ★ 通知送信用の関数（ここに追加）
+async function sendPushNotification(expoPushToken: string, title: string, body: string) {
+  const message = {
+    to: expoPushToken,
+    sound: 'default',
+    title: title,
+    body: body,
+    data: { url: '/chat' }, // 通知をタップしたときの情報
+  };
+
+  try {
+    await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Accept-encoding': 'gzip, deflate',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(message),
+    });
+  } catch (error) {
+    console.log("Notification Error:", error);
+  }
+}
 
 export default function ChatScreen() {
   const router = useRouter();
@@ -13,6 +37,19 @@ export default function ChatScreen() {
   const [inputText, setInputText] = useState('');
   const user = auth.currentUser;
 
+  // 自分の名前を取得しておく（通知のタイトルにするため）
+  const [myUsername, setMyUsername] = useState('新着メッセージ');
+  useEffect(() => {
+    const fetchMe = async () => {
+      if(user) {
+        const d = await getDoc(doc(db, 'users', user.uid));
+        if(d.exists()) setMyUsername(d.data().username || '新着メッセージ');
+      }
+    };
+    fetchMe();
+  }, []);
+
+  // ID順に並べて一意の部屋IDを作る
   const roomId = [user?.uid, friendId].sort().join('_');
 
   useEffect(() => {
@@ -39,7 +76,7 @@ export default function ChatScreen() {
     if (!inputText.trim() || !user) return;
 
     const textToSend = inputText;
-    setInputText(''); 
+    setInputText(''); // すぐに入力欄をクリア
 
     try {
       // 1. 部屋データの更新
@@ -55,41 +92,39 @@ export default function ChatScreen() {
         createdAt: serverTimestamp(),
       });
 
-      // ★★★ 3. 通知を送る処理（ここを追加！） ★★★
-      console.log("通知送信: 相手のトークンを探します...");
+      // ★★★ 3. 通知を送る処理（修正版） ★★★
       
+      // 相手（friendId）の情報を取得
       const friendDoc = await getDoc(doc(db, 'users', friendId as string));
+      
       if (friendDoc.exists()) {
         const friendData = friendDoc.data();
-        const targetToken = friendData.pushToken;
-
-        if (targetToken) {
-          console.log(`トークン発見: ${targetToken}。送信します。`);
-          
-          await fetch('https://exp.host/--/api/v2/push/send', {
-            method: 'POST',
-            headers: {
-              Accept: 'application/json',
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              to: targetToken,
-              sound: 'default',
-              title: "新着メッセージ",
-              body: textToSend,
-              priority: 'high', // iPhoneで届きやすくする設定
-              data: { url: '/chat' },
-            }),
-          });
-          console.log("通知リクエスト完了");
-        } else {
-          console.log("相手はまだ通知用トークンを持っていません");
+        
+        // スマホ用トークンがあれば送る
+        if (friendData.pushTokenNative) {
+          console.log(`スマホへ通知送信: ${friendData.pushTokenNative}`);
+          await sendPushNotification(
+            friendData.pushTokenNative, 
+            myUsername, // タイトル（誰からか）
+            textToSend  // 本文
+          );
+        }
+        
+        // Web用トークンがあれば送る（必要なら）
+        if (friendData.pushTokenWeb) {
+          console.log(`Webへ通知送信: ${friendData.pushTokenWeb}`);
+          await sendPushNotification(
+            friendData.pushTokenWeb, 
+            myUsername, 
+            textToSend
+          );
         }
       }
       // ★★★ 追加ここまで ★★★
       
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      Alert.alert("エラー", "送信に失敗しました");
     }
   };
 
