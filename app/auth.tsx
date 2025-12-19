@@ -1,7 +1,7 @@
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import React, { useState } from 'react';
-import { ActivityIndicator, Alert, Button, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Button, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { auth, db } from '../firebaseConfig';
 
 export default function AuthScreen() {
@@ -11,8 +11,12 @@ export default function AuthScreen() {
   const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(false);
 
+
   const handleAuth = async () => {
-    // バリデーション（入力チェック）
+    // キーボードが開いたままだとAlertが見えないことがあるため閉じる
+    Keyboard.dismiss();
+
+    // バリデーション（簡易チェック）
     if (!email || !password) {
       Alert.alert('エラー', 'メールアドレスとパスワードを入力してください');
       return;
@@ -40,20 +44,40 @@ export default function AuthScreen() {
         });
       }
     } catch (e: any) {
-      let msg = e.message;
-      if (msg.includes('auth/invalid-email')) msg = 'メールアドレスの形式が正しくありません';
-      if (msg.includes('auth/user-not-found') || msg.includes('auth/wrong-password') || msg.includes('auth/invalid-credential')) {
-        msg = 'メールアドレスかパスワードが間違っています';
+      console.log('Firebase Error Code:', e.code); // コンソールでコードを確認できるようにする
+      console.log('Firebase Error Message:', e.message);
+
+      let msg = '予期せぬエラーが発生しました';
+      
+      // ★ここを修正: e.message ではなく e.code で判定する
+      switch (e.code) {
+        case 'auth/invalid-email':
+          msg = 'メールアドレスの形式が正しくありません';
+          break;
+        case 'auth/user-not-found':
+        case 'auth/wrong-password':
+        case 'auth/invalid-credential': // 最近のバージョンではこれが出ることも多い
+          msg = 'メールアドレスかパスワードが間違っています';
+          break;
+        case 'auth/email-already-in-use':
+          msg = 'このメールアドレスは既に登録されています';
+          break;
+        case 'auth/weak-password':
+          msg = 'パスワードは6文字以上にしてください';
+          break;
+        case 'auth/network-request-failed':
+          msg = '通信エラーが発生しました。インターネット接続を確認してください';
+          break;
+        default:
+          // 想定外のエラーは英語のまま、またはデフォルトメッセージを表示
+          msg = e.message; 
       }
-      if (msg.includes('auth/email-already-in-use')) msg = 'このメールアドレスは既に登録されています';
-      if (msg.includes('auth/weak-password')) msg = 'パスワードは6文字以上にしてください';
       
       Alert.alert('エラー', msg);
     } finally {
       setLoading(false);
     }
   };
-
   return (
     <KeyboardAvoidingView 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
