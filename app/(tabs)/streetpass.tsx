@@ -1,11 +1,12 @@
 import * as Location from 'expo-location';
+import { collection, doc, getDocs, serverTimestamp, updateDoc } from 'firebase/firestore';
 import React, { useState } from 'react';
-import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { auth } from '../../firebaseConfig';
+import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, TouchableOpacity, Vibration, View } from 'react-native';
+import { auth, db } from '../../firebaseConfig';
 
 // 2点間の距離（メートル）を計算する関数
 const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-  const R = 6371e3; 
+  const R = 6371e3; // 地球の半径 (m)
   const φ1 = lat1 * Math.PI / 180;
   const φ2 = lat2 * Math.PI / 180;
   const Δφ = (lat2 - lat1) * Math.PI / 180;
@@ -22,69 +23,109 @@ const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => 
 export default function StreetPassScreen() {
   const [nearbyUsers, setNearbyUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [myLocation, setMyLocation] = useState<any>(null); // デバッグ用：自分の位置
 
- const scanNearby = async () => {
-    // ボタンの振動などは一旦オフにして、原因特定に集中します
+  const scanNearby = async () => {
+    // 1. ボタンを押した感触（振動）
+    Vibration.vibrate(50); // ブッ！と短く震える
+    
     setLoading(true);
 
     try {
-      // ①まずここが出るか？
-      alert("診断1: 処理スタート");
-
       const user = auth.currentUser;
       if (!user) {
-        alert("エラー: ログインしていません");
+        Alert.alert("エラー", "ログインしてください");
         setLoading(false);
         return;
       }
 
-      // ②権限チェックの直前
-      alert("診断2: 位置情報の許可を聞きに行きます");
-
+      // 2. 位置情報の許可を取得
       let { status } = await Location.requestForegroundPermissionsAsync();
-      
-      // ③結果はどうだったか？
-      alert(`診断3: 結果は「${status}」でした`);
-
       if (status !== 'granted') {
-        alert("エラー: 拒否されています。スマホの設定で許可してください。");
+        Alert.alert(
+          '位置情報が必要です',
+          'ブラウザやスマホの設定で、このアプリの位置情報を「許可」にしてください。'
+        );
         setLoading(false);
         return;
       }
 
-      // ④位置情報の取得開始
-      alert("診断4: 位置情報を取得中...（ここで止まることが多いです）");
-      
+      // 3. 現在地を取得
+      // accuracy: Balanced は「精度そこそこ、速度そこそこ」でバランスが良い設定です
       let loc = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Lowest, // ★テスト用に精度を下げて取得しやすくする
+        accuracy: Location.Accuracy.Balanced,
       });
-      
-      alert(`診断5: 取得成功！ 緯度: ${loc.coords.latitude}`);
 
-      // ... (これ以降のDB保存などの処理は元のままでOKですが、まずはここまで動くか確認)
+      // 4. 自分の位置をデータベースに保存
+      await updateDoc(doc(db, 'users', user.uid), {
+        location: {
+          latitude: loc.coords.latitude,
+          longitude: loc.coords.longitude,
+          updatedAt: serverTimestamp(),
+        }
+      });
+
+      // 5. 全ユーザーを取得して計算
+      // ※ユーザー数が増えたらここでクエリ制限（whereなど）をかけますが、今は全件取得でOK
+      const usersSnap = await getDocs(collection(db, 'users'));
+      const found: any[] = [];
+
+      usersSnap.forEach((docSnap) => {
+        const data = docSnap.data();
+        const targetId = docSnap.id;
+
+        // 自分自身はリストに入れない
+        if (targetId === user.uid) return;
+
+        // 位置情報を持っていない人は計算できないのでスキップ
+        if (!data.location) return;
+
+        // 距離計算実行
+        const dist = getDistance(
+          loc.coords.latitude, 
+          loc.coords.longitude, 
+          data.location.latitude, 
+          data.location.longitude
+        );
+
+        // ★判定基準：半径2000m（2km）以内
+        // テスト中は広めにしておくと安心です。本番運用時は 500 (m) などに狭めてください。
+        if (dist < 2000) { 
+           found.push({
+             id: targetId,
+             username: data.username || "名無し",
+             distance: Math.round(dist),
+             lastSeen: data.location.updatedAt
+           });
+        }
+      });
+
+      // 結果を保存
+      setNearbyUsers(found);
       
-      // ここから下は元のコードの「DB保存〜検索処理」をそのまま続けてください
-      // ...
+      // 結果に応じたフィードバック
+      if (found.length > 0) {
+        // 見つかったら「ブブッ！」と2回震えて教える
+        Vibration.vibrate([0, 100, 50, 100]); 
+        Alert.alert('スキャン成功！', `${found.length}人の友達が近くにいます！`);
+      } else {
+        // 0人だった場合
+        Alert.alert('スキャン完了', '近く（2km以内）に友達は見つかりませんでした。\n※相手も位置情報を登録している必要があります。');
+      }
 
     } catch (e: any) {
-      alert(`エラー発生: ${e.message}`);
+      console.error("スキャンエラー:", e);
+      Alert.alert('エラー発生', '通信に失敗しました。もう一度試してください。');
     } finally {
       setLoading(false);
     }
   };
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>すれ違い通信</Text>
       <Text style={styles.subTitle}>ボタンを押して近くの友達を探そう</Text>
 
-      {/* ★デバッグ用：自分の座標を表示（テストが終わったら消してOK） */}
-      {myLocation && (
-        <Text style={styles.debugText}>
-          現在地: {myLocation.latitude.toFixed(4)}, {myLocation.longitude.toFixed(4)}
-        </Text>
-      )}
-
+      {/* レーダー風デザイン */}
       <View style={styles.radarContainer}>
         <View style={styles.radarCircle}>
           <Text style={styles.radarText}>📡</Text>
@@ -95,7 +136,7 @@ export default function StreetPassScreen() {
         style={[styles.scanButton, loading && styles.scanButtonDisabled]} 
         onPress={scanNearby}
         disabled={loading}
-        activeOpacity={0.7} // ★ボタンを押した時に色が薄くなる
+        activeOpacity={0.7}
       >
         {loading ? (
           <ActivityIndicator color="#fff" />
@@ -109,7 +150,11 @@ export default function StreetPassScreen() {
       <FlatList
         data={nearbyUsers}
         keyExtractor={(item) => item.id}
-        ListEmptyComponent={<Text style={styles.emptyText}>スキャンボタンを押してください</Text>}
+        ListEmptyComponent={
+          <Text style={styles.emptyText}>
+            {loading ? "探しています..." : "まだ誰も見つかっていません"}
+          </Text>
+        }
         renderItem={({ item }) => (
           <View style={styles.card}>
             <View style={styles.avatar}>
@@ -117,7 +162,7 @@ export default function StreetPassScreen() {
             </View>
             <View>
               <Text style={styles.username}>{item.username}</Text>
-              <Text style={styles.distance}>距離: {item.distance}m</Text>
+              <Text style={styles.distance}>ここから {item.distance}m</Text>
             </View>
           </View>
         )}
@@ -129,8 +174,7 @@ export default function StreetPassScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f0f2f5', paddingTop: 60, paddingHorizontal: 20 },
   title: { fontSize: 24, fontWeight: 'bold', textAlign: 'center', marginBottom: 5 },
-  subTitle: { textAlign: 'center', color: '#666', marginBottom: 20 },
-  debugText: { textAlign: 'center', fontSize: 10, color: '#aaa', marginBottom: 10 },
+  subTitle: { textAlign: 'center', color: '#666', marginBottom: 30 },
   
   radarContainer: { alignItems: 'center', marginBottom: 30 },
   radarCircle: { width: 100, height: 100, borderRadius: 50, backgroundColor: '#dceeff', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#2f95dc' },
@@ -142,7 +186,7 @@ const styles = StyleSheet.create({
     borderRadius: 30, 
     alignItems: 'center', 
     marginBottom: 30,
-    // ★影をつけてボタンっぽさを出す
+    // ボタンに立体感をつける影
     shadowColor: "#000", 
     shadowOffset: { width: 0, height: 4 }, 
     shadowOpacity: 0.3, 
