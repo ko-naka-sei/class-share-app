@@ -1,8 +1,7 @@
 import * as Location from 'expo-location';
-import { collection, doc, getDocs, serverTimestamp, updateDoc } from 'firebase/firestore';
-import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, TouchableOpacity, Vibration, View } from 'react-native';
-import { auth, db } from '../../firebaseConfig';
+import React, { useState } from 'react';
+import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { auth } from '../../firebaseConfig';
 
 // 2点間の距離（メートル）を計算する関数
 const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
@@ -25,104 +24,55 @@ export default function StreetPassScreen() {
   const [loading, setLoading] = useState(false);
   const [myLocation, setMyLocation] = useState<any>(null); // デバッグ用：自分の位置
 
-  const scanNearby = async () => {
-    // ★追加1: ボタンを押した瞬間にスマホを振動させる（Webでも対応端末なら震えます）
-    Vibration.vibrate(50);
-    
+ const scanNearby = async () => {
+    // ボタンの振動などは一旦オフにして、原因特定に集中します
     setLoading(true);
-    console.log("=== スキャン開始 ===");
 
     try {
+      // ①まずここが出るか？
+      alert("診断1: 処理スタート");
+
       const user = auth.currentUser;
       if (!user) {
-        Alert.alert("エラー", "ログインしてください");
+        alert("エラー: ログインしていません");
         setLoading(false);
         return;
       }
 
-      // 1. 位置情報の許可（スマホ用により厳密にチェック）
+      // ②権限チェックの直前
+      alert("診断2: 位置情報の許可を聞きに行きます");
+
       let { status } = await Location.requestForegroundPermissionsAsync();
+      
+      // ③結果はどうだったか？
+      alert(`診断3: 結果は「${status}」でした`);
+
       if (status !== 'granted') {
-        Alert.alert('位置情報エラー', '設定から位置情報を許可してください');
+        alert("エラー: 拒否されています。スマホの設定で許可してください。");
         setLoading(false);
         return;
       }
 
-      // 2. 現在地を取得
-      // ★ポイント: accuracyを入れると精度が上がります
+      // ④位置情報の取得開始
+      alert("診断4: 位置情報を取得中...（ここで止まることが多いです）");
+      
       let loc = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
+        accuracy: Location.Accuracy.Lowest, // ★テスト用に精度を下げて取得しやすくする
       });
       
-      // デバッグ用に画面に表示
-      setMyLocation(loc.coords);
-      console.log("自分の位置:", loc.coords.latitude, loc.coords.longitude);
+      alert(`診断5: 取得成功！ 緯度: ${loc.coords.latitude}`);
 
-      // 3. 自分の位置をDBに保存
-      await updateDoc(doc(db, 'users', user.uid), {
-        location: {
-          latitude: loc.coords.latitude,
-          longitude: loc.coords.longitude,
-          updatedAt: serverTimestamp(),
-        }
-      });
-
-      // 4. 全ユーザーを取得して計算
-      const usersSnap = await getDocs(collection(db, 'users'));
-      const found: any[] = [];
-
-      usersSnap.forEach((docSnap) => {
-        const data = docSnap.data();
-        const targetId = docSnap.id;
-
-        // 自分自身はスキップ
-        if (targetId === user.uid) return;
-
-        // 位置情報を持っていない人はスキップ
-        if (!data.location) return;
-
-        // 距離を計算
-        const dist = getDistance(
-          loc.coords.latitude, 
-          loc.coords.longitude, 
-          data.location.latitude, 
-          data.location.longitude
-        );
-
-        console.log(`${data.username}までの距離: ${Math.round(dist)}m`);
-
-        // ★修正: テスト用に「10km (10000m)」まで許容する
-        // PCのWi-Fi位置情報はズレやすいため、広めにとるのがコツです
-        if (dist < 10000) { 
-           found.push({
-             id: targetId,
-             username: data.username || "名無し",
-             distance: Math.round(dist),
-           });
-        }
-      });
-
-      setNearbyUsers(found);
+      // ... (これ以降のDB保存などの処理は元のままでOKですが、まずはここまで動くか確認)
       
-      if (found.length > 0) {
-        Vibration.vibrate([0, 100, 50, 100]); // 発見したら「ブブッ」と震える
-        Alert.alert('発見！', `${found.length}人とすれ違いました！`);
-      } else {
-        Alert.alert('結果', '近くに（10km以内）ユーザーはいませんでした。\n※PCとスマホで別のアカウントを使っていますか？');
-      }
+      // ここから下は元のコードの「DB保存〜検索処理」をそのまま続けてください
+      // ...
 
     } catch (e: any) {
-      console.error("エラー:", e);
-      Alert.alert('エラー', e.message);
+      alert(`エラー発生: ${e.message}`);
     } finally {
       setLoading(false);
     }
   };
-
-  useEffect(() => {
-    // 初回ロード時は自動スキャンしない（ユーザーにボタンを押させるため）
-  }, []);
-
   return (
     <View style={styles.container}>
       <Text style={styles.title}>すれ違い通信</Text>
