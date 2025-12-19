@@ -1,16 +1,40 @@
-//app/(tabs)/friends.tsx
 import { Ionicons } from '@expo/vector-icons';
-import { collection, doc, getDoc, getDocs, setDoc } from 'firebase/firestore'; // updateDoc, arrayUnionなどは削除
+import { collection, doc, getDoc, getDocs, setDoc } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Keyboard, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { auth, db } from '../../firebaseConfig';
 
+// ★ 通知送信用の関数（コンポーネントの外に定義）
+async function sendPushNotification(expoPushToken: string, title: string, body: string) {
+  const message = {
+    to: expoPushToken,
+    sound: 'default',
+    title: title,
+    body: body,
+    data: { someData: 'goes here' },
+  };
+
+  try {
+    await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Accept-encoding': 'gzip, deflate',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(message),
+    });
+  } catch (error) {
+    console.log("Notification Error:", error);
+  }
+}
+
 export default function FriendsScreen() {
   const [searchText, setSearchText] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
-  const [requestStatus, setRequestStatus] = useState<{[key: string]: boolean}>({}); // リクエスト送信済みかどうかの管理
+  const [requestStatus, setRequestStatus] = useState<{[key: string]: boolean}>({}); 
   const [loading, setLoading] = useState(false);
-  const [myUsername, setMyUsername] = useState(''); // 自分の名前
+  const [myUsername, setMyUsername] = useState(''); 
 
   // 自分の名前を取得（相手に送るため）
   useEffect(() => {
@@ -57,23 +81,42 @@ export default function FriendsScreen() {
     }
   };
 
-  // ★リクエスト送信処理
+  // ★リクエスト送信処理（通知機能を追加）
   const sendRequest = async (targetUser: any) => {
     const currentUser = auth.currentUser;
     if (!currentUser) return;
 
     try {
-      // 相手の friendRequests コレクションに自分を追加
+      // 1. Firestoreに保存
       await setDoc(doc(db, 'users', targetUser.id, 'friendRequests', currentUser.uid), {
-        username: myUsername, // 自分の名前
+        username: myUsername,
         uid: currentUser.uid,
         createdAt: new Date()
       });
 
-      // 送信済み状態にする（ボタンの表示を変えるため）
+      // 2. 通知を送信する処理
+      // 相手の最新情報を取得してトークンを確認
+      const targetUserSnap = await getDoc(doc(db, 'users', targetUser.id));
+      if (targetUserSnap.exists()) {
+        const data = targetUserSnap.data();
+        const title = "友達リクエスト";
+        const body = `${myUsername}さんから友達リクエストが届きました！`;
+
+        // スマホ用トークンがあれば送信
+        if (data.pushTokenNative) {
+          await sendPushNotification(data.pushTokenNative, title, body);
+        }
+        // Web用トークンがあれば送信
+        if (data.pushTokenWeb) {
+          await sendPushNotification(data.pushTokenWeb, title, body);
+        }
+      }
+
+      // 送信済み状態にする
       setRequestStatus(prev => ({ ...prev, [targetUser.id]: true }));
       Alert.alert('送信完了', `${targetUser.username}さんにリクエストを送りました！`);
     } catch (e) {
+      console.error(e);
       Alert.alert('エラー', '送信に失敗しました');
     }
   };
@@ -106,7 +149,7 @@ export default function FriendsScreen() {
             <Text style={styles.emptyText}>ユーザー名を入力して検索してください</Text>
           }
           renderItem={({ item }) => {
-            const isSent = requestStatus[item.id]; // 既に送ったかチェック
+            const isSent = requestStatus[item.id]; 
 
             return (
               <View style={styles.userCard}>
@@ -153,7 +196,7 @@ const styles = StyleSheet.create({
 
   followButton: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, minWidth: 80, alignItems: 'center' },
   followBtn: { backgroundColor: '#000' },
-  sentBtn: { backgroundColor: '#e0e0e0' }, // 送信済みはグレーアウト
+  sentBtn: { backgroundColor: '#e0e0e0' }, 
   btnText: { fontSize: 12, fontWeight: 'bold' },
   followText: { color: '#fff' },
   sentText: { color: '#888' }

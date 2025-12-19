@@ -1,16 +1,25 @@
-//app/(tabs)/index.tsx
-import { Ionicons } from '@expo/vector-icons'; // ★ アイコン用に追加
+import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
-import { useFocusEffect, useRouter } from 'expo-router'; // ★ useRouterを追加
+import { useFocusEffect, useRouter } from 'expo-router';
 import { signOut } from 'firebase/auth';
 import { collection, doc, getDoc, getDocs, updateDoc } from 'firebase/firestore';
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, FlatList, Image, Platform, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  Alert,
+  FlatList,
+  Image,
+  Platform, // ★追加：OS判定に必要
+  RefreshControl,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
+} from 'react-native';
 import { auth, db } from '../../firebaseConfig';
 
-// 通知設定
+// 通知の表示設定
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -22,13 +31,13 @@ Notifications.setNotificationHandler({
 });
 
 export default function HomeScreen() {
-  const router = useRouter(); // ★画面移動に必要
+  const router = useRouter();
   const [viewMode, setViewMode] = useState<'photos' | 'timetables'>('photos');
   const [posts, setPosts] = useState<any[]>([]);
   const [timetables, setTimetables] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
-  // 1. 通知登録
+  // 1. 通知登録関数（修正済み）
   const registerForPushNotificationsAsync = async () => {
     const user = auth.currentUser;
     if (!user) return;
@@ -37,6 +46,8 @@ export default function HomeScreen() {
       await Notifications.setNotificationChannelAsync('default', {
         name: 'default',
         importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#FF231F7C',
       });
     }
 
@@ -47,17 +58,38 @@ export default function HomeScreen() {
         const { status } = await Notifications.requestPermissionsAsync();
         finalStatus = status;
       }
-      if (finalStatus !== 'granted') return;
+      if (finalStatus !== 'granted') {
+        // 許可されなかった場合
+        console.log('Notification permission not granted');
+        return;
+      }
 
       const projectId = Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId;
       if (!projectId) return;
 
       try {
-        const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
-        await updateDoc(doc(db, 'users', user.uid), { pushToken: tokenData.data });
-      } catch (e) {
-        console.log(e);
+        // ★ Web用にVAPIDキーを設定
+        const tokenData = await Notifications.getExpoPushTokenAsync({
+          projectId,
+          vapidKey: Platform.OS === 'web' 
+            ? 'ここにFirebaseコンソールで取得したVAPIDキーを貼り付けてください' // ★TODO: キーを貼り付ける
+            : undefined,
+        });
+
+        console.log("Push Token:", tokenData.data);
+
+        // ★ OSによって保存先を分ける（上書き防止）
+        if (Platform.OS === 'web') {
+          await updateDoc(doc(db, 'users', user.uid), { pushTokenWeb: tokenData.data });
+        } else {
+          await updateDoc(doc(db, 'users', user.uid), { pushTokenNative: tokenData.data });
+        }
+
+      } catch (e: any) {
+        console.log("Error getting token:", e);
       }
+    } else {
+      console.log('Must use physical device for Push Notifications');
     }
   };
 
@@ -71,24 +103,27 @@ export default function HomeScreen() {
         return;
       }
 
+      // 自分のフォローリストを取得
       const myProfileSnap = await getDoc(doc(db, 'users', user.uid));
       let following: string[] = [];
       if (myProfileSnap.exists()) {
         following = myProfileSnap.data().following || [];
       }
+      // 自分の投稿も表示するために自分自身のIDを追加
       if (!following.includes(user.uid)) following.push(user.uid);
 
-      // 写真取得
+      // 写真（Posts）取得
       const postsSnap = await getDocs(collection(db, 'posts'));
       const loadedPosts: any[] = [];
       postsSnap.forEach((doc) => {
         const d = doc.data();
         if (following.includes(d.uid)) loadedPosts.push({ id: doc.id, ...d });
       });
+      // 新しい順にソート
       loadedPosts.sort((a, b) => (b.updatedAt?.seconds || 0) - (a.updatedAt?.seconds || 0));
       setPosts(loadedPosts);
 
-      // 時間割取得
+      // 時間割（Timetables）取得
       const timetablesSnap = await getDocs(collection(db, 'timetables'));
       const loadedTimetables: any[] = [];
       timetablesSnap.forEach((doc) => {
@@ -107,21 +142,25 @@ export default function HomeScreen() {
   const handleLogout = async () => {
     try {
       await signOut(auth);
+      router.replace('/auth/login'); // ログイン画面へ戻る（パスは環境に合わせて調整してください）
     } catch (e: any) {
       Alert.alert('エラー', e.message);
     }
   };
 
+  // 初回ロード時に通知登録を実行
   useEffect(() => {
     registerForPushNotificationsAsync();
   }, []);
 
+  // 画面が表示されるたびにデータを再取得
   useFocusEffect(
     useCallback(() => {
       fetchData();
     }, [])
   );
 
+  // 時間割リストのレンダリングヘルパー
   const renderFreeTimeList = (data: any) => {
     const days = [
       { key: 'mon', label: '月' }, { key: 'tue', label: '火' },
@@ -152,6 +191,7 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
+      {/* ヘッダーエリア */}
       <View style={styles.headerContainer}>
         <View style={styles.tabContainer}>
           <TouchableOpacity 
@@ -173,6 +213,7 @@ export default function HomeScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* コンテンツ切り替え */}
       {viewMode === 'photos' ? (
         <FlatList
           data={posts}
@@ -183,6 +224,7 @@ export default function HomeScreen() {
             <View style={styles.card}>
               <View style={styles.cardHeader}>
                 <Text style={styles.username}>{item.username || '名無し'}</Text>
+                {/* 日時表示があればここに */}
                 <Text style={styles.date}>Real.</Text>
               </View>
               {item.photoUrl && <Image source={{ uri: item.photoUrl }} style={styles.postImage} />}
@@ -205,10 +247,10 @@ export default function HomeScreen() {
             )}
           />
           
-          {/* ★ここに追加！編集ボタン（FAB） */}
+          {/* 時間割編集ボタン (FAB) */}
           <TouchableOpacity 
             style={styles.fab} 
-            onPress={() => router.push('/timetable')} // ※timetable.tsxへ移動
+            onPress={() => router.push('/timetable-edit')} // 遷移先パスは適宜調整
           >
             <Ionicons name="pencil" size={24} color="#fff" />
             <Text style={styles.fabText}>編集</Text>
@@ -229,6 +271,7 @@ const styles = StyleSheet.create({
   activeTab: { backgroundColor: '#000' },
   tabText: { fontWeight: 'bold', color: '#555' },
   activeTabText: { color: '#fff' },
+  
   card: { backgroundColor: '#fff', marginHorizontal: 15, marginBottom: 20, borderRadius: 15, padding: 15, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3 },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
   username: { fontWeight: 'bold', fontSize: 16 },
@@ -236,6 +279,7 @@ const styles = StyleSheet.create({
   postImage: { width: '100%', height: 400, borderRadius: 10, backgroundColor: '#eee', resizeMode: 'cover' },
   message: { marginTop: 10, fontSize: 14, color: '#333' },
   emptyText: { textAlign: 'center', marginTop: 50, color: '#888' },
+  
   timetableUser: { fontSize: 18, fontWeight: 'bold', marginBottom: 15, color: '#000', textAlign: 'center' },
   listContainer: { paddingHorizontal: 10 },
   listRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
@@ -246,7 +290,6 @@ const styles = StyleSheet.create({
   planText: { flex: 1, fontSize: 16, color: '#333' },
   noPlanText: { textAlign: 'center', color: '#aaa', fontStyle: 'italic' },
   
-  // ★追加した編集ボタンのスタイル
   fab: {
     position: 'absolute',
     bottom: 30,
