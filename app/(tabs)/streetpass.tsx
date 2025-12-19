@@ -1,7 +1,8 @@
 import * as Location from 'expo-location';
-import { collection, doc, getDoc, getDocs, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { collection, doc, getDocs, serverTimestamp, updateDoc } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+// ↓パスが間違っている場合は修正してください
 import { auth, db } from '../../firebaseConfig';
 
 // 2点間の距離（メートル）を計算する関数（ハーバーサイン公式）
@@ -25,14 +26,20 @@ export default function StreetPassScreen() {
   const [loading, setLoading] = useState(false);
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
 
-  // すれ違い通信を開始（更新）する
+  // すれ違い通信を開始（デバッグ版）
   const scanNearby = async () => {
     setLoading(true);
+    console.log("=== スキャン開始 ===");
+
     try {
       const user = auth.currentUser;
-      if (!user) return;
+      if (!user) {
+        console.log("ユーザーがログインしていません");
+        Alert.alert("エラー", "ログインしてください");
+        return;
+      }
 
-      // 1. 位置情報の許可をもらう
+      // 1. 位置情報の許可
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert('エラー', '位置情報の許可が必要です');
@@ -42,9 +49,10 @@ export default function StreetPassScreen() {
 
       // 2. 現在地を取得
       let loc = await Location.getCurrentPositionAsync({});
+      console.log("自分の位置:", loc.coords.latitude, loc.coords.longitude);
       setLocation(loc);
 
-      // 3. 自分の位置をデータベースに保存
+      // 3. 自分の位置をDBに保存
       // users > UID > location というフィールドを作ります
       await updateDoc(doc(db, 'users', user.uid), {
         location: {
@@ -53,56 +61,68 @@ export default function StreetPassScreen() {
           updatedAt: serverTimestamp(), // いつそこにいたか
         }
       });
+      console.log("自分の位置をDBに保存しました");
 
-      // 4. 友達の位置を取得して、近い人を探す
-      // まず自分のフォローリストを取得
-      const myProfile = await getDoc(doc(db, 'users', user.uid));
-      const following = myProfile.exists() ? (myProfile.data().following || []) : [];
-
-      // 全ユーザー（あるいは友達のみ）の位置をチェック
-      // ※本格運用時はクエリで絞りますが、簡易的に全件取得してJSで計算します
+      // 4. 全ユーザーを取得して計算（★デバッグのため、友達フィルターを解除中）
+      // 本番では where('following', 'array-contains', user.uid) などを使います
       const usersSnap = await getDocs(collection(db, 'users'));
+      console.log(`DBから ${usersSnap.size} 人のユーザーを取得しました`);
+
       const found: any[] = [];
 
       usersSnap.forEach((docSnap) => {
         const data = docSnap.data();
-        // 自分以外の友達で、位置情報データがある人
-        if (docSnap.id !== user.uid && following.includes(docSnap.id) && data.location) {
-          // 距離を計算
-          const dist = getDistance(
-            loc.coords.latitude, 
-            loc.coords.longitude, 
-            data.location.latitude, 
-            data.location.longitude
-          );
+        const targetId = docSnap.id;
 
-          // ★ここがポイント：例えば「500m以内」かつ「1時間以内のデータ」なら「すれ違い」と判定
-          // 今回はテストしやすいように「距離だけ」で判定します
-          if (dist < 500) { // 半径500m以内
-             found.push({
-               id: docSnap.id,
-               username: data.username,
-               distance: Math.round(dist), // m単位
-               lastSeen: data.location.updatedAt
-             });
-          }
+        // 自分自身はスキップ
+        if (targetId === user.uid) return;
+
+        // 位置情報を持っていない人はスキップ
+        if (!data.location) {
+          console.log(`User: ${data.username || targetId} は位置データがありません`);
+          return;
+        }
+
+        // 距離を計算
+        const dist = getDistance(
+          loc.coords.latitude, 
+          loc.coords.longitude, 
+          data.location.latitude, 
+          data.location.longitude
+        );
+
+        console.log(`User: ${data.username} までの距離: ${Math.round(dist)}m`);
+
+        // ★テスト用に半径を拡大中（500m -> 5000km）
+        // 動作確認ができたら 500 に戻しましょう
+        if (dist < 5000000) { 
+           found.push({
+             id: targetId,
+             username: data.username || "名無し",
+             distance: Math.round(dist), // m単位
+             lastSeen: data.location.updatedAt
+           });
         }
       });
 
+      console.log("発見人数:", found.length);
       setNearbyUsers(found);
+      
       if (found.length > 0) {
         Alert.alert('発見！', `${found.length}人とすれ違いました！`);
       } else {
-        Alert.alert('スキャン完了', '近くに友達はいませんでした...');
+        Alert.alert('スキャン完了', '近くに（条件に合う）友達はいませんでした...');
       }
 
     } catch (e: any) {
+      console.error("エラー詳細:", e);
       Alert.alert('エラー', e.message);
     } finally {
       setLoading(false);
     }
   };
 
+  // 初回起動時にも実行
   useEffect(() => {
     scanNearby();
   }, []);
@@ -110,10 +130,9 @@ export default function StreetPassScreen() {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>すれ違い通信 (GPS版)</Text>
-      <Text style={styles.subTitle}>半径500m以内の友達を探します</Text>
+      <Text style={styles.subTitle}>半径500m以内のユーザーを探します</Text>
 
       <View style={styles.radarContainer}>
-        {/* レーダーっぽいデザイン */}
         <View style={styles.radarCircle}>
           <Text style={styles.radarText}>📡</Text>
         </View>
@@ -131,7 +150,7 @@ export default function StreetPassScreen() {
         )}
       </TouchableOpacity>
 
-      <Text style={styles.listHeader}>近くにいる友達</Text>
+      <Text style={styles.listHeader}>近くにいるユーザー</Text>
       
       <FlatList
         data={nearbyUsers}
