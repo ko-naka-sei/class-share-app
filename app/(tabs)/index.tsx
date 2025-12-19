@@ -1,3 +1,4 @@
+//app/(tabs)/index.tsx
 import { Ionicons } from '@expo/vector-icons'; // ★ アイコン用に追加
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';

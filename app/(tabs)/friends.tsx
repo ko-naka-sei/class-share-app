@@ -1,3 +1,4 @@
+//app/(tabs)/friends.tsx
 import { Ionicons } from '@expo/vector-icons';
 import { collection, doc, getDoc, getDocs, setDoc } from 'firebase/firestore'; // updateDoc, arrayUnionなどは削除
 import React, { useEffect, useState } from 'react';
