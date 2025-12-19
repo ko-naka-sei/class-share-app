@@ -1,12 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
-import Head from 'expo-router/head'; // ★これを忘れずにインポート！
+import Head from 'expo-router/head';
 import React from 'react';
 
 export default function TabLayout() {
   return (
     <>
-      {/* ★PWA化（アドレスバー消し）の指示 */}
       <Head>
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -14,7 +13,7 @@ export default function TabLayout() {
 
       <Tabs screenOptions={{ tabBarActiveTintColor: '#2f95dc' }}>
         
-        {/* ホームタブ */}
+        {/* ホーム */}
         <Tabs.Screen
           name="index"
           options={{
@@ -23,7 +22,7 @@ export default function TabLayout() {
           }}
         />
 
-        {/* すれ違いタブ */}
+        {/* すれ違い */}
         <Tabs.Screen
           name="streetpass"
           options={{
@@ -32,16 +31,7 @@ export default function TabLayout() {
           }}
         />
 
-        {/* 時間割編集タブ */}
-        <Tabs.Screen
-          name="timetable-edit"
-          options={{
-            title: '予定編集',
-            tabBarIcon: ({ color }) => <Ionicons name="create" size={24} color={color} />,
-          }}
-        />
-
-        {/* 投稿タブ */}
+        {/* 投稿 */}
         <Tabs.Screen
           name="post"
           options={{
@@ -50,12 +40,32 @@ export default function TabLayout() {
           }}
         />
 
-        {/* 友達追加タブ */}
+        {/* 友達検索（友達追加） */}
         <Tabs.Screen
           name="friends"
           options={{
-            title: '友達追加',
-            tabBarIcon: ({ color }) => <Ionicons name="person-add" size={24} color={color} />,
+            title: '友達検索',
+            tabBarIcon: ({ color }) => <Ionicons name="search" size={24} color={color} />,
+          }}
+        />
+
+        {/* ★ここを変更：プロフィール（承認・設定・時間割編集もここにまとめるのが一般的ですが、今回はタブとして追加） */}
+        <Tabs.Screen
+          name="profile" // ※ファイル名を profile.tsx にする必要があります
+          options={{
+            title: 'マイページ',
+            tabBarIcon: ({ color }) => <Ionicons name="person" size={24} color={color} />,
+          }}
+        />
+
+        {/* ※時間割編集タブ（timetable-edit）はマイページに入れることもできますが、タブとして残すならそのままで */}
+        <Tabs.Screen
+          name="timetable-edit"
+          options={{
+            href: null, // ★タブバーには表示しない（マイページなどから遷移、あるいはタブが多すぎるので隠す）
+            // またはタブとして残すなら href: null を削除
+            title: '予定編集',
+            tabBarIcon: ({ color }) => <Ionicons name="create" size={24} color={color} />,
           }}
         />
 

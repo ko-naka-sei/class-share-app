@@ -1,3 +1,4 @@
+//app/_layout.tsx
 import { Analytics } from "@vercel/analytics/react";
 import { Stack } from 'expo-router';
 import Head from 'expo-router/head';

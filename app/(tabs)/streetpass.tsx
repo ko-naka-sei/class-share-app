@@ -1,3 +1,4 @@
+//app/(tabs)/streetpass.tsx
 import * as Location from 'expo-location';
 import { collection, doc, getDocs, serverTimestamp, updateDoc } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';

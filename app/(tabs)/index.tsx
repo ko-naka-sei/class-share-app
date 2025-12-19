@@ -1,3 +1,4 @@
+//app/(tabs)/index.tsx
 import { useFocusEffect } from 'expo-router';
 import { signOut } from 'firebase/auth'; // ★追加: ログアウト機能
 import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
