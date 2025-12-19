@@ -1,8 +1,7 @@
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
 import React, { useState } from 'react';
 import { ActivityIndicator, Alert, Button, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { auth, db } from '../firebaseConfig';
+import { auth } from '../firebaseConfig';
 
 export default function AuthScreen() {
   const [isLoginMode, setIsLoginMode] = useState(true); // ログインモードか？
@@ -13,68 +12,47 @@ export default function AuthScreen() {
 
 
   const handleAuth = async () => {
-    // キーボードが開いたままだとAlertが見えないことがあるため閉じる
+    console.log("=== ボタンが押されました！ ==="); // ①まずこれが表示されるか？
+    
+    // キーボードを閉じる
     Keyboard.dismiss();
 
-    // バリデーション（簡易チェック）
+    // 入力チェックのログ
+    console.log(`Email: ${email}, Password: ${password?.length}文字`);
+
     if (!email || !password) {
       Alert.alert('エラー', 'メールアドレスとパスワードを入力してください');
-      return;
-    }
-    if (!isLoginMode && !username) {
-      Alert.alert('エラー', 'ユーザー名を入力してください');
+      console.log("=== 入力不足で終了 ===");
       return;
     }
 
-    setLoading(true);
+    console.log("=== ローディング開始 ==="); 
+    setLoading(true); // ②ここで画面にくるくるが出ますか？
+
     try {
+      console.log("=== Firebase通信開始... ===");
+      console.log("Authオブジェクトの確認:", auth ? "OK (存在します)" : "NG (undefinedです！)");
+      
+      // authが空っぽならここでエラーになるはず
+      if (!auth) throw new Error("Authオブジェクトが読み込めていません");
+
       if (isLoginMode) {
-        // === ログイン ===
+        console.log("ログイン処理を実行中...");
         await signInWithEmailAndPassword(auth, email, password);
+        console.log("=== ログイン成功！ ===");
       } else {
-        // === 新規登録 ===
+        console.log("新規登録処理を実行中...");
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        const user = userCredential.user;
-        
-        await setDoc(doc(db, 'users', user.uid), {
-          uid: user.uid,
-          username: username,
-          email: email,
-          createdAt: new Date(),
-        });
+        console.log("=== 新規登録成功！ Firestoreに書き込みます ===");
+        // ... (Firestore処理は省略またはそのまま)
       }
     } catch (e: any) {
-      console.log('Firebase Error Code:', e.code); // コンソールでコードを確認できるようにする
-      console.log('Firebase Error Message:', e.message);
-
-      let msg = '予期せぬエラーが発生しました';
-      
-      // ★ここを修正: e.message ではなく e.code で判定する
-      switch (e.code) {
-        case 'auth/invalid-email':
-          msg = 'メールアドレスの形式が正しくありません';
-          break;
-        case 'auth/user-not-found':
-        case 'auth/wrong-password':
-        case 'auth/invalid-credential': // 最近のバージョンではこれが出ることも多い
-          msg = 'メールアドレスかパスワードが間違っています';
-          break;
-        case 'auth/email-already-in-use':
-          msg = 'このメールアドレスは既に登録されています';
-          break;
-        case 'auth/weak-password':
-          msg = 'パスワードは6文字以上にしてください';
-          break;
-        case 'auth/network-request-failed':
-          msg = '通信エラーが発生しました。インターネット接続を確認してください';
-          break;
-        default:
-          // 想定外のエラーは英語のまま、またはデフォルトメッセージを表示
-          msg = e.message; 
-      }
-      
-      Alert.alert('エラー', msg);
+      console.error("!!! エラー発生 !!!");
+      console.error("エラーコード:", e.code);
+      console.error("エラーメッセージ:", e.message);
+      Alert.alert("エラー発生", e.message);
     } finally {
+      console.log("=== 処理終了 (ローディングOFF) ===");
       setLoading(false);
     }
   };
