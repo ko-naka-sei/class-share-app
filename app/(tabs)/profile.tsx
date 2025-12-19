@@ -1,5 +1,6 @@
 import { signOut } from 'firebase/auth';
 // ★ updateDoc, arrayUnion を追加しました
+import { useRouter } from 'expo-router';
 import { arrayUnion, collection, deleteDoc, doc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -10,6 +11,7 @@ export default function ProfileScreen() {
   const [requests, setRequests] = useState<any[]>([]);
   const [friends, setFriends] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
   const user = auth.currentUser;
 
@@ -156,18 +158,31 @@ export default function ProfileScreen() {
       )}
 
       {/* 友達一覧 */}
+      {/* === 友達一覧 === */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>🤝 友達一覧 ({friends.length})</Text>
         {friends.length === 0 ? (
           <Text style={styles.emptyText}>まだ友達がいません</Text>
         ) : (
           friends.map((friend) => (
-            <View key={friend.id} style={styles.friendRow}>
+            <TouchableOpacity 
+              key={friend.id} 
+              style={styles.friendRow}
+              // ★ここを追加：タップしたらチャット画面へ移動
+              onPress={() => {
+                router.push({
+                  pathname: '/chat',
+                  params: { friendId: friend.id, friendName: friend.username }
+                });
+              }}
+            >
               <View style={styles.miniAvatar}>
                  <Text style={styles.miniAvatarText}>{friend.username?.charAt(0)}</Text>
               </View>
               <Text style={styles.friendName}>{friend.username}</Text>
-            </View>
+              {/* 吹き出しアイコンなどを置くと分かりやすい */}
+              <Text style={{ marginLeft: 'auto', fontSize: 20 }}>💬</Text> 
+            </TouchableOpacity>
           ))
         )}
       </View>
