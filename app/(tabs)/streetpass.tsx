@@ -89,7 +89,7 @@ export default function StreetPassScreen() {
 
         // ★判定基準：半径2000m（2km）以内
         // テスト中は広めにしておくと安心です。本番運用時は 500 (m) などに狭めてください。
-        if (dist < 2000) { 
+        if (dist < 10000) { 
            found.push({
              id: targetId,
              username: data.username || "名無し",
