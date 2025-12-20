@@ -1,4 +1,5 @@
 import { Analytics } from "@vercel/analytics/react";
+import * as Linking from 'expo-linking'; // ★追加
 import * as Notifications from 'expo-notifications';
 import { Stack, useRouter } from 'expo-router';
 import Head from 'expo-router/head';
@@ -8,7 +9,6 @@ import { ActivityIndicator, Platform, View } from 'react-native';
 import { auth } from '../firebaseConfig';
 import AuthScreen from './auth';
 
-// 通知の動作設定
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -22,37 +22,61 @@ export default function RootLayout() {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  // ★ 通知タップ時の処理
+  // ★ 通知タップ時の処理（URL解析機能付き）
   useEffect(() => {
-    // 1. アプリ起動中に通知をタップした場合
-    const subscription = Notifications.addNotificationResponseReceivedListener(response => {
+    const handleNotificationResponse = (response: Notifications.NotificationResponse) => {
       const data = response.notification.request.content.data;
       
       if (data && data.url) {
-        console.log("通知パス受信:", data.url);
-        // ★重要: 0.5秒待ってから移動（これがないとホームに戻されることがある）
-        setTimeout(() => {
-            router.push(data.url);
-        }, 500);
-      }
-    });
+        console.log("受信URL:", data.url);
 
-    // 2. アプリが完全に死んでいる状態から通知で起動した場合
+        try {
+          // ★Expo Goの長いURLを解析する
+          // これで "exp://.../--/chat" から "chat" を取り出せます
+          const parsed = Linking.parse(data.url);
+          
+          if (parsed.path) {
+            // クエリパラメータ（?friendId=...）を復元する
+            const queryParams = parsed.queryParams 
+              ? '?' + new URLSearchParams(parsed.queryParams as any).toString() 
+              : '';
+            
+            // パスの先頭に "/" がない場合は補って、クエリと合体させる
+            const path = parsed.path.startsWith('/') ? parsed.path : `/${parsed.path}`;
+            const targetUrl = `${path}${queryParams}`;
+
+            console.log("ジャンプ先:", targetUrl);
+            
+            // ★0.5秒待ってから移動（タイミング問題を防ぐ重要ポイント）
+            setTimeout(() => {
+              router.push(targetUrl as any);
+            }, 500);
+          } else {
+             // 万が一パスが取れなかった場合はそのままURLを使う
+             console.log("パス解析不能、直接ジャンプ試行");
+             setTimeout(() => {
+               router.push(data.url);
+             }, 500);
+          }
+        } catch (e) {
+          console.error("URL解析エラー:", e);
+        }
+      }
+    };
+
+    // 1. アプリ起動中に通知タップ
+    const subscription = Notifications.addNotificationResponseReceivedListener(handleNotificationResponse);
+
+    // 2. アプリ停止状態から通知タップ（コールドスタート）
     Notifications.getLastNotificationResponseAsync().then(response => {
-      if (response?.notification.request.content.data.url) {
-        const url = response.notification.request.content.data.url;
-        console.log("コールドスタート通知:", url);
-        // こちらは少し長めに待つ
-        setTimeout(() => {
-            router.push(url);
-        }, 1000);
+      if (response) {
+        handleNotificationResponse(response);
       }
     });
 
     return () => subscription.remove();
   }, []);
 
-  // 認証監視
   useEffect(() => {
     if (Platform.OS === 'web') {
       document.title = "MyBeReal"; 

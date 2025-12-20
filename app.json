@@ -3,9 +3,9 @@
     "name": "MY-APP",
     "slug": "MY-APP",
     "version": "1.0.0",
+    "scheme": "my-app", 
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "MY-APP",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
@@ -23,6 +23,7 @@
     },
     "web": {
       "bundler": "metro",
+      // "output": "server" は削除済みのままにしてください
       "favicon": "./assets/images/favicon.png",
       "display": "standalone",
       "backgroundColor": "#ffffff",

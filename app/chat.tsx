@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Linking from 'expo-linking'; // ★追加
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { addDoc, collection, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp, setDoc } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
@@ -6,13 +7,13 @@ import { Alert, FlatList, KeyboardAvoidingView, Platform, SafeAreaView, StyleShe
 import { auth, db } from '../firebaseConfig';
 
 // 通知送信関数
-async function sendPushNotification(expoPushToken: string, title: string, body: string, redirectPath: string) {
+async function sendPushNotification(expoPushToken: string, title: string, body: string, redirectUrl: string) {
   const message = {
     to: expoPushToken,
     sound: 'default',
     title: title,
     body: body,
-    data: { url: redirectPath }, // 単純なパス ("/chat?...") を送る
+    data: { url: redirectUrl }, // ここに完全なURLを入れる
   };
 
   try {
@@ -24,9 +25,6 @@ async function sendPushNotification(expoPushToken: string, title: string, body: 
       },
       body: JSON.stringify(message),
     });
-    if (!response.ok) {
-       console.log("API Error", await response.text());
-    }
   } catch (error) {
     console.log("Notification Error:", error);
   }
@@ -79,34 +77,37 @@ export default function ChatScreen() {
     setInputText(''); 
 
     try {
-      // 1. 部屋データ更新
       await setDoc(doc(db, 'rooms', roomId), {
         members: [user.uid, friendId],
         updatedAt: serverTimestamp(),
       }, { merge: true });
 
-      // 2. メッセージ追加
       await addDoc(collection(db, 'rooms', roomId, 'messages'), {
         text: textToSend,
         senderId: user.uid,
         createdAt: serverTimestamp(),
       });
 
-      // ★★★ 3. シンプルパスで通知送信 ★★★
+      // ★★★ 通知処理 ★★★
       const friendDoc = await getDoc(doc(db, 'users', friendId as string));
       
       if (friendDoc.exists()) {
         const friendData = friendDoc.data();
 
-        // ★複雑なURLではなく、単純なパスを作る
-        const redirectPath = `/chat?friendId=${user.uid}&friendName=${myUsername}`;
+        // ★Linking.createURL で完全なURL（Expo Go用の住所）を作る
+        const redirectUrl = Linking.createURL('chat', {
+          queryParams: {
+            friendId: user.uid,
+            friendName: myUsername,
+          },
+        });
         
-        console.log("通知パス:", redirectPath);
+        console.log("通知URL:", redirectUrl);
 
         if (friendData.pushTokenNative) {
-          await sendPushNotification(friendData.pushTokenNative, myUsername, textToSend, redirectPath);
+          await sendPushNotification(friendData.pushTokenNative, myUsername, textToSend, redirectUrl);
         } else if (friendData.pushTokenWeb) {
-          await sendPushNotification(friendData.pushTokenWeb, myUsername, textToSend, redirectPath);
+          await sendPushNotification(friendData.pushTokenWeb, myUsername, textToSend, redirectUrl);
         }
       }
       
