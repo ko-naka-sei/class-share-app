@@ -1,5 +1,4 @@
 import { Analytics } from "@vercel/analytics/react";
-import * as Linking from 'expo-linking'; // ★追加
 import * as Notifications from 'expo-notifications';
 import { Stack, useRouter } from 'expo-router';
 import Head from 'expo-router/head';
@@ -22,52 +21,37 @@ export default function RootLayout() {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  // ★ 通知タップ時の処理（URL解析機能付き）
+  // ★ 通知タップ時の処理（生データ版）
   useEffect(() => {
     const handleNotificationResponse = (response: Notifications.NotificationResponse) => {
       const data = response.notification.request.content.data;
       
-      if (data && data.url) {
-        console.log("受信URL:", data.url);
+      // データの中身を確認
+      // "targetScreen" が "chat" だったら移動する
+      if (data && data.targetScreen === 'chat') {
+        console.log("チャット通知を受信:", data);
 
-        try {
-          // ★Expo Goの長いURLを解析する
-          // これで "exp://.../--/chat" から "chat" を取り出せます
-          const parsed = Linking.parse(data.url);
-          
-          if (parsed.path) {
-            // クエリパラメータ（?friendId=...）を復元する
-            const queryParams = parsed.queryParams 
-              ? '?' + new URLSearchParams(parsed.queryParams as any).toString() 
-              : '';
-            
-            // パスの先頭に "/" がない場合は補って、クエリと合体させる
-            const path = parsed.path.startsWith('/') ? parsed.path : `/${parsed.path}`;
-            const targetUrl = `${path}${queryParams}`;
+        const targetFriendId = data.friendId;
+        const targetFriendName = data.friendName;
 
-            console.log("ジャンプ先:", targetUrl);
-            
-            // ★0.5秒待ってから移動（タイミング問題を防ぐ重要ポイント）
-            setTimeout(() => {
-              router.push(targetUrl as any);
-            }, 500);
-          } else {
-             // 万が一パスが取れなかった場合はそのままURLを使う
-             console.log("パス解析不能、直接ジャンプ試行");
-             setTimeout(() => {
-               router.push(data.url);
-             }, 500);
-          }
-        } catch (e) {
-          console.error("URL解析エラー:", e);
-        }
+        // ★router.pushにオブジェクトを渡す（これが一番確実です）
+        // 0.5秒待つのは必須です（起動直後の不具合防止）
+        setTimeout(() => {
+          router.push({
+            pathname: '/chat',
+            params: { 
+              friendId: targetFriendId, 
+              friendName: targetFriendName 
+            }
+          });
+        }, 500);
       }
     };
 
-    // 1. アプリ起動中に通知タップ
+    // 1. アプリ起動中
     const subscription = Notifications.addNotificationResponseReceivedListener(handleNotificationResponse);
 
-    // 2. アプリ停止状態から通知タップ（コールドスタート）
+    // 2. コールドスタート（アプリ停止状態から）
     Notifications.getLastNotificationResponseAsync().then(response => {
       if (response) {
         handleNotificationResponse(response);

@@ -1,19 +1,25 @@
 import { Ionicons } from '@expo/vector-icons';
-import * as Linking from 'expo-linking'; // ★追加
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { addDoc, collection, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp, setDoc } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import { Alert, FlatList, KeyboardAvoidingView, Platform, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+// Linkingのインポートはもう不要ですが、残しておいてもエラーにはなりません
 import { auth, db } from '../firebaseConfig';
 
 // 通知送信関数
-async function sendPushNotification(expoPushToken: string, title: string, body: string, redirectUrl: string) {
+// 引数を変更：URLではなく、IDと名前を受け取る
+async function sendPushNotification(expoPushToken: string, title: string, body: string, friendId: string, friendName: string) {
   const message = {
     to: expoPushToken,
     sound: 'default',
     title: title,
     body: body,
-    data: { url: redirectUrl }, // ここに完全なURLを入れる
+    // ★重要：URLではなく、生データを送る
+    data: { 
+      targetScreen: 'chat', // 「チャット画面に行くぞ」という合言葉
+      friendId: friendId, 
+      friendName: friendName 
+    },
   };
 
   try {
@@ -88,26 +94,29 @@ export default function ChatScreen() {
         createdAt: serverTimestamp(),
       });
 
-      // ★★★ 通知処理 ★★★
+      // ★★★ 通知送信 ★★★
       const friendDoc = await getDoc(doc(db, 'users', friendId as string));
       
       if (friendDoc.exists()) {
         const friendData = friendDoc.data();
 
-        // ★Linking.createURL で完全なURL（Expo Go用の住所）を作る
-        const redirectUrl = Linking.createURL('chat', {
-          queryParams: {
-            friendId: user.uid,
-            friendName: myUsername,
-          },
-        });
-        
-        console.log("通知URL:", redirectUrl);
-
+        // ★URL生成は不要！ IDと名前をそのまま渡す
         if (friendData.pushTokenNative) {
-          await sendPushNotification(friendData.pushTokenNative, myUsername, textToSend, redirectUrl);
+          await sendPushNotification(
+            friendData.pushTokenNative, 
+            myUsername, 
+            textToSend, 
+            user.uid,   // 自分のID (相手にとってはfriendId)
+            myUsername  // 自分の名前
+          );
         } else if (friendData.pushTokenWeb) {
-          await sendPushNotification(friendData.pushTokenWeb, myUsername, textToSend, redirectUrl);
+          await sendPushNotification(
+            friendData.pushTokenWeb, 
+            myUsername, 
+            textToSend, 
+            user.uid, 
+            myUsername
+          );
         }
       }
       
