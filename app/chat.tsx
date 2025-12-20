@@ -1,7 +1,4 @@
-// app/chat.tsx
-
 import { Ionicons } from '@expo/vector-icons';
-import * as Linking from 'expo-linking'; // ★追加: 正しいURLを作るために必要
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { addDoc, collection, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp, setDoc } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
@@ -9,17 +6,16 @@ import { Alert, FlatList, KeyboardAvoidingView, Platform, SafeAreaView, StyleShe
 import { auth, db } from '../firebaseConfig';
 
 // 通知送信関数
-async function sendPushNotification(expoPushToken: string, title: string, body: string, redirectUrl: string) {
+async function sendPushNotification(expoPushToken: string, title: string, body: string, redirectPath: string) {
   const message = {
     to: expoPushToken,
     sound: 'default',
     title: title,
     body: body,
-    data: { url: redirectUrl }, // ここに生成したURLを入れる
+    data: { url: redirectPath }, // 単純なパス ("/chat?...") を送る
   };
 
   try {
-    // Vercel上のAPIへ送信
     const response = await fetch('/api/send-push', {
       method: 'POST',
       headers: {
@@ -28,9 +24,8 @@ async function sendPushNotification(expoPushToken: string, title: string, body: 
       },
       body: JSON.stringify(message),
     });
-
     if (!response.ok) {
-      console.log("API Error:", await response.text());
+       console.log("API Error", await response.text());
     }
   } catch (error) {
     console.log("Notification Error:", error);
@@ -77,7 +72,6 @@ export default function ChatScreen() {
     return () => unsubscribe();
   }, [roomId]);
 
-  // 送信ボタンの処理
   const sendMessage = async () => {
     if (!inputText.trim() || !user) return;
 
@@ -85,54 +79,36 @@ export default function ChatScreen() {
     setInputText(''); 
 
     try {
-      // 1. 部屋データの更新
+      // 1. 部屋データ更新
       await setDoc(doc(db, 'rooms', roomId), {
         members: [user.uid, friendId],
         updatedAt: serverTimestamp(),
       }, { merge: true });
 
-      // 2. メッセージを追加
+      // 2. メッセージ追加
       await addDoc(collection(db, 'rooms', roomId, 'messages'), {
         text: textToSend,
         senderId: user.uid,
         createdAt: serverTimestamp(),
       });
 
-      // ★★★ 3. 通知送信処理（修正版） ★★★
-      
+      // ★★★ 3. シンプルパスで通知送信 ★★★
       const friendDoc = await getDoc(doc(db, 'users', friendId as string));
       
       if (friendDoc.exists()) {
         const friendData = friendDoc.data();
 
-        // ★Linkingを使って完全なURLを生成する
-        // これで "exp://..." またはWeb用のURLが自動で正しく作られます
-        const redirectUrl = Linking.createURL('chat', {
-          queryParams: {
-            friendId: user.uid,
-            friendName: myUsername,
-          },
-        });
+        // ★複雑なURLではなく、単純なパスを作る
+        const redirectPath = `/chat?friendId=${user.uid}&friendName=${myUsername}`;
         
-        console.log("通知用URL:", redirectUrl);
+        console.log("通知パス:", redirectPath);
 
         if (friendData.pushTokenNative) {
-          await sendPushNotification(
-            friendData.pushTokenNative, 
-            myUsername, 
-            textToSend,
-            redirectUrl
-          );
+          await sendPushNotification(friendData.pushTokenNative, myUsername, textToSend, redirectPath);
         } else if (friendData.pushTokenWeb) {
-          await sendPushNotification(
-            friendData.pushTokenWeb, 
-            myUsername, 
-            textToSend,
-            redirectUrl
-          );
+          await sendPushNotification(friendData.pushTokenWeb, myUsername, textToSend, redirectPath);
         }
       }
-      // ★★★ ここまで ★★★
       
     } catch (e: any) {
       console.error(e);
@@ -198,15 +174,12 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 15, backgroundColor: '#fff', borderBottomWidth: 1, borderColor: '#eee', marginTop: 30 },
   headerTitle: { fontSize: 18, fontWeight: 'bold' },
   backButton: { padding: 5 },
-  
   messageBubble: { maxWidth: '80%', padding: 12, borderRadius: 20, marginBottom: 10 },
   myBubble: { alignSelf: 'flex-end', backgroundColor: '#2f95dc', borderBottomRightRadius: 2 },
   friendBubble: { alignSelf: 'flex-start', backgroundColor: '#fff', borderBottomLeftRadius: 2 },
-  
   messageText: { fontSize: 16 },
   myText: { color: '#fff' },
   friendText: { color: '#333' },
-
   inputContainer: { flexDirection: 'row', padding: 10, backgroundColor: '#fff', alignItems: 'center' },
   input: { flex: 1, backgroundColor: '#f0f0f0', borderRadius: 20, paddingHorizontal: 15, paddingVertical: 10, fontSize: 16, marginRight: 10 },
   sendButton: { width: 44, height: 44, backgroundColor: '#2f95dc', borderRadius: 22, justifyContent: 'center', alignItems: 'center' },

@@ -1,7 +1,4 @@
-// app/_layout.tsx
-
 import { Analytics } from "@vercel/analytics/react";
-import * as Linking from 'expo-linking'; // ★追加: URL解析用
 import * as Notifications from 'expo-notifications';
 import { Stack, useRouter } from 'expo-router';
 import Head from 'expo-router/head';
@@ -11,7 +8,7 @@ import { ActivityIndicator, Platform, View } from 'react-native';
 import { auth } from '../firebaseConfig';
 import AuthScreen from './auth';
 
-// 通知設定
+// 通知の動作設定
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -25,39 +22,30 @@ export default function RootLayout() {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  // ★ 通知タップ時の処理（URL解析機能を追加）
+  // ★ 通知タップ時の処理
   useEffect(() => {
+    // 1. アプリ起動中に通知をタップした場合
     const subscription = Notifications.addNotificationResponseReceivedListener(response => {
       const data = response.notification.request.content.data;
       
       if (data && data.url) {
-        console.log("受信したURL:", data.url);
-        
-        try {
-          // Expoの機能でURLを分解する（exp://... をパスとクエリに分ける）
-          const parsed = Linking.parse(data.url);
+        console.log("通知パス受信:", data.url);
+        // ★重要: 0.5秒待ってから移動（これがないとホームに戻されることがある）
+        setTimeout(() => {
+            router.push(data.url);
+        }, 500);
+      }
+    });
 
-          // パス（chat）があれば移動する
-          if (parsed.path) {
-             // クエリパラメータ（friendIdなど）があれば文字列に戻す
-             const query = parsed.queryParams 
-               ? '?' + new URLSearchParams(parsed.queryParams as any).toString() 
-               : '';
-             
-             // 例: /chat?friendId=abc... という形にする
-             // pathの先頭にスラッシュがない場合はつける
-             const targetPath = parsed.path.startsWith('/') ? parsed.path + query : `/${parsed.path}${query}`;
-             
-             console.log("ジャンプ先:", targetPath);
-             router.push(targetPath as any);
-          } else {
-             // パスが解析できない場合はそのまま試す
-             router.push(data.url);
-          }
-        } catch (e) {
-          console.log("リンク解析エラー:", e);
-          router.push(data.url); 
-        }
+    // 2. アプリが完全に死んでいる状態から通知で起動した場合
+    Notifications.getLastNotificationResponseAsync().then(response => {
+      if (response?.notification.request.content.data.url) {
+        const url = response.notification.request.content.data.url;
+        console.log("コールドスタート通知:", url);
+        // こちらは少し長めに待つ
+        setTimeout(() => {
+            router.push(url);
+        }, 1000);
       }
     });
 
