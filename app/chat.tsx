@@ -7,18 +7,19 @@ import React, { useEffect, useState } from 'react';
 import { Alert, FlatList, KeyboardAvoidingView, Platform, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { auth, db } from '../firebaseConfig';
 
-// ★ 通知送信用の関数（自分のAPIへ送るように変更済み）
-async function sendPushNotification(expoPushToken: string, title: string, body: string) {
+// ★ 通知送信用の関数（URLデータを含めるように修正）
+async function sendPushNotification(expoPushToken: string, title: string, body: string, redirectUrl: string) {
   const message = {
     to: expoPushToken,
     sound: 'default',
     title: title,
     body: body,
-    data: { url: '/chat' },
+    data: { url: redirectUrl }, // ★ここで「飛び先」を指定！
   };
 
   try {
-    // 自分の作ったAPIルートに投げる
+    // Vercel上のAPIへ送信 (環境に合わせてパスは調整してください)
+    // 相対パス '/api/send-push' が効かない場合は完全なURL 'https://....vercel.app/api/send-push' を書いてください
     const response = await fetch('/api/send-push', {
       method: 'POST',
       headers: {
@@ -29,8 +30,7 @@ async function sendPushNotification(expoPushToken: string, title: string, body: 
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      console.error("API Error:", errorData);
+      console.log("API Error:", await response.text());
     }
   } catch (error) {
     console.log("Notification Error:", error);
@@ -99,44 +99,34 @@ export default function ChatScreen() {
         createdAt: serverTimestamp(),
       });
 
-      // ★★★ 3. デバッグ用 通知送信処理 ★★★
-      console.log("通知処理開始...");
+      // ★★★ 3. 通知送信処理（修正版） ★★★
       
-      // 相手のデータを取得
       const friendDoc = await getDoc(doc(db, 'users', friendId as string));
       
       if (friendDoc.exists()) {
         const friendData = friendDoc.data();
-        console.log("相手のデータ:", friendData);
 
-        // Nativeトークンがあるかチェック
+        // ★相手が通知を開いたときに飛ぶURLを作る
+        // 「相手」から見て「自分（user.uid）」とのチャット画面を開かせたい
+        const redirectUrl = `/chat?friendId=${user.uid}&friendName=${myUsername}`;
+
         if (friendData.pushTokenNative) {
-          console.log("スマホ用トークン発見。送信します。");
+          console.log("スマホへ通知送信");
           await sendPushNotification(
             friendData.pushTokenNative, 
             myUsername, 
-            textToSend
+            textToSend,
+            redirectUrl // URLを渡す
           );
-        } 
-        // Webトークンがあるかチェック
-        else if (friendData.pushTokenWeb) {
-          console.log("Web用トークン発見。送信します。");
+        } else if (friendData.pushTokenWeb) {
+          console.log("Webへ通知送信");
           await sendPushNotification(
             friendData.pushTokenWeb, 
             myUsername, 
-            textToSend
+            textToSend,
+            redirectUrl
           );
         }
-        // 古いトークンしかない場合
-        else if (friendData.pushToken) {
-           Alert.alert("注意", "古いトークン(pushToken)しかありません。スマホ側でアプリを開き直して更新してください。");
-        } 
-        // 何もない場合
-        else {
-          console.log("相手のトークンが見つかりません。");
-        }
-      } else {
-        console.log("相手のユーザーデータが見つかりません");
       }
       // ★★★ ここまで ★★★
       

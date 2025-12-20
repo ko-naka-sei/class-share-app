@@ -1,16 +1,43 @@
-//app/_layout.tsx
+// app/_layout.tsx
 import { Analytics } from "@vercel/analytics/react";
-import { Stack } from 'expo-router';
+import * as Notifications from 'expo-notifications'; // ★ 通知機能をインポート
+import { Stack, useRouter } from 'expo-router'; // ★ useRouterを追加
 import Head from 'expo-router/head';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, View } from 'react-native';
 import { auth } from '../firebaseConfig';
-import AuthScreen from './auth'; // これが「最初のページ」として機能します
+import AuthScreen from './auth';
+
+// ★ 通知の動作設定（アプリ起動中に通知が来たときの挙動）
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 export default function RootLayout() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const router = useRouter(); // ★ ルーターを取得
+
+  // ★ 通知をタップしたときの処理（リスナー）
+  useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener(response => {
+      // 通知に含まれているデータ（url）を取り出す
+      const data = response.notification.request.content.data;
+      
+      // urlがあれば、そこへジャンプ！
+      if (data && data.url) {
+        console.log("通知タップ検知！ジャンプします:", data.url);
+        router.push(data.url);
+      }
+    });
+
+    return () => subscription.remove();
+  }, []);
 
   useEffect(() => {
     // Web用タイトル設定
@@ -36,7 +63,6 @@ export default function RootLayout() {
   }
 
   // 2. 未ログインなら、このコンポーネント自体を「ログイン画面」にする
-  // ページ遷移ではなく、ここでリターンすることで「最初のページ＝ログイン画面」になります
   if (!user) {
     return (
         <>
@@ -70,6 +96,9 @@ export default function RootLayout() {
       >
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         
+        {/* ★ チャット画面の設定を追加（これがないとタイトルが出ない場合があります） */}
+        <Stack.Screen name="chat" options={{ title: 'チャット' }} />
+
         {/* モーダルなどの画面はここに追加 */}
         {/* 例: <Stack.Screen name="settings" options={{ presentation: 'modal' }} /> */}
       </Stack>
