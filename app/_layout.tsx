@@ -1,7 +1,9 @@
 // app/_layout.tsx
+
 import { Analytics } from "@vercel/analytics/react";
-import * as Notifications from 'expo-notifications'; // ★ 通知機能をインポート
-import { Stack, useRouter } from 'expo-router'; // ★ useRouterを追加
+import * as Linking from 'expo-linking'; // ★追加: URL解析用
+import * as Notifications from 'expo-notifications';
+import { Stack, useRouter } from 'expo-router';
 import Head from 'expo-router/head';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { useEffect, useState } from 'react';
@@ -9,7 +11,7 @@ import { ActivityIndicator, Platform, View } from 'react-native';
 import { auth } from '../firebaseConfig';
 import AuthScreen from './auth';
 
-// ★ 通知の動作設定（アプリ起動中に通知が来たときの挙動）
+// 通知設定
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -21,31 +23,52 @@ Notifications.setNotificationHandler({
 export default function RootLayout() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const router = useRouter(); // ★ ルーターを取得
+  const router = useRouter();
 
-  // ★ 通知をタップしたときの処理（リスナー）
+  // ★ 通知タップ時の処理（URL解析機能を追加）
   useEffect(() => {
     const subscription = Notifications.addNotificationResponseReceivedListener(response => {
-      // 通知に含まれているデータ（url）を取り出す
       const data = response.notification.request.content.data;
       
-      // urlがあれば、そこへジャンプ！
       if (data && data.url) {
-        console.log("通知タップ検知！ジャンプします:", data.url);
-        router.push(data.url);
+        console.log("受信したURL:", data.url);
+        
+        try {
+          // Expoの機能でURLを分解する（exp://... をパスとクエリに分ける）
+          const parsed = Linking.parse(data.url);
+
+          // パス（chat）があれば移動する
+          if (parsed.path) {
+             // クエリパラメータ（friendIdなど）があれば文字列に戻す
+             const query = parsed.queryParams 
+               ? '?' + new URLSearchParams(parsed.queryParams as any).toString() 
+               : '';
+             
+             // 例: /chat?friendId=abc... という形にする
+             // pathの先頭にスラッシュがない場合はつける
+             const targetPath = parsed.path.startsWith('/') ? parsed.path + query : `/${parsed.path}${query}`;
+             
+             console.log("ジャンプ先:", targetPath);
+             router.push(targetPath as any);
+          } else {
+             // パスが解析できない場合はそのまま試す
+             router.push(data.url);
+          }
+        } catch (e) {
+          console.log("リンク解析エラー:", e);
+          router.push(data.url); 
+        }
       }
     });
 
     return () => subscription.remove();
   }, []);
 
+  // 認証監視
   useEffect(() => {
-    // Web用タイトル設定
     if (Platform.OS === 'web') {
       document.title = "MyBeReal"; 
     }
-
-    // ログイン監視
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setLoading(false);
@@ -53,7 +76,6 @@ export default function RootLayout() {
     return () => unsubscribe();
   }, []);
 
-  // 1. ロード中（黒背景で待機）
   if (loading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }}>
@@ -62,7 +84,6 @@ export default function RootLayout() {
     );
   }
 
-  // 2. 未ログインなら、このコンポーネント自体を「ログイン画面」にする
   if (!user) {
     return (
         <>
@@ -70,15 +91,12 @@ export default function RootLayout() {
                 <meta name="apple-mobile-web-app-capable" content="yes" />
                 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
             </Head>
-            {/* ログイン・登録機能を持ったコンポーネントを表示 */}
             <AuthScreen /> 
-             {/* 未ログインでもAnalyticsは動かす */}
             {Platform.OS === 'web' && <Analytics />}
         </>
     );
   }
 
-  // 3. ログイン済みなら、アプリのメイン画面（Tabs）を表示
   return (
     <>
       <Head>
@@ -95,15 +113,9 @@ export default function RootLayout() {
         }}
       >
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        
-        {/* ★ チャット画面の設定を追加（これがないとタイトルが出ない場合があります） */}
         <Stack.Screen name="chat" options={{ title: 'チャット' }} />
-
-        {/* モーダルなどの画面はここに追加 */}
-        {/* 例: <Stack.Screen name="settings" options={{ presentation: 'modal' }} /> */}
       </Stack>
 
-      {/* Web用アクセス解析 */}
       {Platform.OS === 'web' && <Analytics />}
     </>
   );

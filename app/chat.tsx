@@ -1,25 +1,25 @@
 // app/chat.tsx
 
 import { Ionicons } from '@expo/vector-icons';
+import * as Linking from 'expo-linking'; // ★追加: 正しいURLを作るために必要
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { addDoc, collection, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp, setDoc } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import { Alert, FlatList, KeyboardAvoidingView, Platform, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { auth, db } from '../firebaseConfig';
 
-// ★ 通知送信用の関数（URLデータを含めるように修正）
+// 通知送信関数
 async function sendPushNotification(expoPushToken: string, title: string, body: string, redirectUrl: string) {
   const message = {
     to: expoPushToken,
     sound: 'default',
     title: title,
     body: body,
-    data: { url: redirectUrl }, // ★ここで「飛び先」を指定！
+    data: { url: redirectUrl }, // ここに生成したURLを入れる
   };
 
   try {
-    // Vercel上のAPIへ送信 (環境に合わせてパスは調整してください)
-    // 相対パス '/api/send-push' が効かない場合は完全なURL 'https://....vercel.app/api/send-push' を書いてください
+    // Vercel上のAPIへ送信
     const response = await fetch('/api/send-push', {
       method: 'POST',
       headers: {
@@ -44,7 +44,6 @@ export default function ChatScreen() {
   const [inputText, setInputText] = useState('');
   const user = auth.currentUser;
   
-  // 自分の名前（通知タイトル用）
   const [myUsername, setMyUsername] = useState('新着メッセージ');
 
   useEffect(() => {
@@ -106,20 +105,25 @@ export default function ChatScreen() {
       if (friendDoc.exists()) {
         const friendData = friendDoc.data();
 
-        // ★相手が通知を開いたときに飛ぶURLを作る
-        // 「相手」から見て「自分（user.uid）」とのチャット画面を開かせたい
-        const redirectUrl = `/chat?friendId=${user.uid}&friendName=${myUsername}`;
+        // ★Linkingを使って完全なURLを生成する
+        // これで "exp://..." またはWeb用のURLが自動で正しく作られます
+        const redirectUrl = Linking.createURL('chat', {
+          queryParams: {
+            friendId: user.uid,
+            friendName: myUsername,
+          },
+        });
+        
+        console.log("通知用URL:", redirectUrl);
 
         if (friendData.pushTokenNative) {
-          console.log("スマホへ通知送信");
           await sendPushNotification(
             friendData.pushTokenNative, 
             myUsername, 
             textToSend,
-            redirectUrl // URLを渡す
+            redirectUrl
           );
         } else if (friendData.pushTokenWeb) {
-          console.log("Webへ通知送信");
           await sendPushNotification(
             friendData.pushTokenWeb, 
             myUsername, 
